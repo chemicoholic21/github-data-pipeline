@@ -1,0 +1,41 @@
+import { pgTable, text, integer, real, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+
+export const analyses = pgTable('analyses', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull(),
+  totalScore: real('total_score').notNull().default(0),
+  aiScore: real('ai_score').notNull().default(0),
+  backendScore: real('backend_score').notNull().default(0),
+  frontendScore: real('frontend_score').notNull().default(0),
+  devopsScore: real('devops_score').notNull().default(0),
+  dataScore: real('data_score').notNull().default(0),
+  uniqueSkillsJson: jsonb('unique_skills_json'),
+  linkedin: text('linkedin'),
+  topReposJson: jsonb('top_repos_json'),
+  languagesJson: jsonb('languages_json'),
+  contributionCount: integer('contribution_count').notNull().default(0),
+  cachedAt: timestamp('cached_at').notNull().defaultNow(),
+});
+
+export const leaderboard = pgTable('leaderboard', {
+  username: text('username').primaryKey(),
+  name: text('name'),
+  avatarUrl: text('avatar_url'),
+  url: text('url'),
+  totalScore: real('total_score').notNull().default(0),
+  aiScore: real('ai_score').notNull().default(0),
+  backendScore: real('backend_score').notNull().default(0),
+  frontendScore: real('frontend_score').notNull().default(0),
+  devopsScore: real('devops_score').notNull().default(0),
+  dataScore: real('data_score').notNull().default(0),
+  uniqueSkillsJson: jsonb('unique_skills_json'),
+  company: text('company'),
+  blog: text('blog'),
+  location: text('location'),
+  email: text('email'),
+  bio: text('bio'),
+  twitterUsername: text('twitter_username'),
+  linkedin: text('linkedin'),
+  hireable: boolean('hireable').notNull().default(false),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
