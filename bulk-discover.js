@@ -1,13 +1,4 @@
-import { db } from "./src/db/dbClient";
-import { analyses, leaderboard } from "./src/lib/schema";
-import { sql } from "drizzle-orm";
-import { Octokit } from "@octokit/rest";
-import { getBestToken } from "./src/lib/pat-pool";
-import { fetchUserAnalysis } from "./src/lib/github";
-import { computeScore } from "./src/lib/scoring";
-const CONCURRENCY = 3; // Lowered to avoid secondary rate limits
-const WAIT_TIME_MS = 60 * 1000 * 5; // 5 minutes
-const BATCH_DELAY_MS = 200; // Small delay between batch processing
+
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
