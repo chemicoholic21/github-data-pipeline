@@ -8,7 +8,7 @@
     "dev": "tsx watch src/cli.ts",
     "build": "tsc",
     "start": "node dist/cli.js",
-    "bulk-discover": "tsx src/bulk-discover.ts",
+    "bulk-discover": "tsx bulk-discover.ts",
     "db:push": "drizzle-kit push",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -27,7 +27,7 @@
   "dependencies": {
     "@octokit/graphql": "^9.0.3",
     "@octokit/rest": "^20.0.2",
-    "axios": "^1.14.1",
+    "axios": "^1.14.0",
     "bullmq": "^5.71.1",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.2",

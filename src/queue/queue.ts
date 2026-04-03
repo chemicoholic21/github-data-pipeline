@@ -1,17 +1,28 @@
 import Redis from 'ioredis';
 import { Queue, Worker, Job } from 'bullmq';
 import { config } from '../utils/config';
-import axios from 'axios';
+import axiosLib from 'axios';
+
+const axios = (axiosLib as any).default || axiosLib;
+
+// --- Redis Client Interface ---
+export interface RedisClient {
+  on(event: string, callback: (...args: any[]) => void): void;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ...args: any[]): Promise<void>;
+  setex(key: string, ttl: number, value: string): Promise<void>;
+  del(key: string): Promise<void>;
+}
 
 // --- Redis Client Setup ---
-let redisConnection;
+let redisConnection: RedisClient;
 if (config.redisUrl) {
   // Use Redis protocol
   try {
     redisConnection = new Redis(config.redisUrl, {
       maxRetriesPerRequest: null, // Prevent retries if connection is lost
-    });
-  } catch (error) {
+    }) as unknown as RedisClient;
+  } catch (error: any) {
     console.warn('Failed to initialize Redis connection:', error.message);
     redisConnection = createMockRedis();
   }
@@ -24,7 +35,7 @@ if (config.redisUrl) {
   redisConnection = createMockRedis();
 }
 
-function createUpstashRestRedis(restUrl: string, token: string) {
+function createUpstashRestRedis(restUrl: string, token: string): RedisClient {
   const client = axios.create({
     baseURL: restUrl,
     headers: {
@@ -33,36 +44,47 @@ function createUpstashRestRedis(restUrl: string, token: string) {
     timeout: 5000,
   });
 
+  const execCommand = async (command: any[]) => {
+    try {
+      const response = await client.post('/', command);
+      return response.data.result;
+    } catch (error: any) {
+      console.error('Upstash Redis REST Error:', error.message);
+      return null;
+    }
+  };
+
   return {
     on: (event: string, callback: Function) => {
-      // Mock events
+      // Mock events - Upstash REST doesn't support real-time events like 'connect' or 'error' in the same way
+      if (event === 'connect') {
+        setTimeout(callback, 0);
+      }
     },
     get: async (key: string) => {
-      try {
-        const response = await client.get(`/get/${key}`);
-        return response.data.result;
-      } catch (error) {
-        return null;
-      }
+      return await execCommand(['GET', key]);
+    },
+    set: async (key: string, value: string, ...args: any[]) => {
+      const command = ['SET', key, value, ...args];
+      await execCommand(command);
     },
     setex: async (key: string, ttl: number, value: string) => {
-      try {
-        await client.post(`/setex/${key}/${ttl}`, value, {
-          headers: { 'Content-Type': 'text/plain' },
-        });
-      } catch (error) {
-        // Ignore errors
-      }
+      await execCommand(['SETEX', key, ttl, value]);
     },
-  };
+    del: async (key: string) => {
+      await execCommand(['DEL', key]);
+    }
+  } as RedisClient;
 }
 
-function createMockRedis() {
+function createMockRedis(): RedisClient {
   return {
     on: () => {},
     get: () => Promise.resolve(null),
+    set: () => Promise.resolve(),
     setex: () => Promise.resolve(),
-  };
+    del: () => Promise.resolve(),
+  } as RedisClient;
 }
 
 redisConnection.on('error', (err) => {

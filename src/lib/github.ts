@@ -1,4 +1,4 @@
-import { graphql } from '@octokit/graphql';
+import { gitHubGraphqlClient } from '../github/graphqlClient';
 import { getBestToken, updateTokenUsage } from './pat-pool';
 
 interface User {
@@ -126,7 +126,6 @@ interface SearchResponse extends RateLimitFragment {
 
 const USER_ANALYSIS_QUERY = `
   query UserAnalysis($login: String!) {
-    rateLimit { remaining cost }
     user(login: $login) {
       login
       name
@@ -213,7 +212,6 @@ const USER_ANALYSIS_QUERY = `
 
 const SEARCH_MERGED_PRS_QUERY = `
   query SearchMergedPrs($searchQuery: String!) {
-    rateLimit { remaining cost }
     search(query: $searchQuery, type: ISSUE, first: 100) {
       nodes {
         ... on PullRequest {
@@ -252,18 +250,14 @@ const extractLinkedIn = (
 };
 
 export async function fetchUserAnalysis(username: string): Promise<UserAnalysis> {
-  const tokenData = await getBestToken();
-
-  const client = graphql.defaults({
-    headers: {
-      authorization: `token ${tokenData.token}`,
-    },
-  });
-
   try {
-    // Fetch user analysis data
-    const userRes = await client<UserAnalysisResponse>(USER_ANALYSIS_QUERY, {
-      login: username,
+    // Fetch user analysis data using the centralized client with caching
+    const userRes = await gitHubGraphqlClient.request<UserAnalysisResponse>({
+      query: USER_ANALYSIS_QUERY,
+      variables: { login: username },
+      operationName: 'UserAnalysis',
+      useCache: true,
+      cacheTTL: 3600, // 1 hour
     });
 
     if (!userRes.user) {
@@ -271,9 +265,6 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
     }
 
     const user = userRes.user;
-
-    // Update token usage after first query
-    updateTokenUsage(tokenData.token, userRes.rateLimit.remaining, Date.now() + 3600000); // 1 hour from now
 
     // Combine owned repos and repos contributed to
     const allRepoNodes = [
@@ -314,12 +305,13 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
 
         const searchQuery = `${repoQueries.join(" ")} is:pr is:merged author:${username}`;
 
-        const searchRes = await client<SearchResponse>(SEARCH_MERGED_PRS_QUERY, {
-          searchQuery,
+        const searchRes = await gitHubGraphqlClient.request<SearchResponse>({
+          query: SEARCH_MERGED_PRS_QUERY,
+          variables: { searchQuery },
+          operationName: 'SearchMergedPrs',
+          useCache: true,
+          cacheTTL: 3600,
         });
-
-        // Update token usage after second query
-        updateTokenUsage(tokenData.token, searchRes.rateLimit.remaining, Date.now() + 3600000);
 
         // Count PRs per repository
         const countsByRepo = new Map<string, number>();

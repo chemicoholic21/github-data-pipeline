@@ -1,9 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { config } from '../utils/config';
-import { redisConnection } from '../queue/queue'; // Assuming redisConnection is exported
+import { redisConnection, RedisClient } from '../queue/queue'; // Assuming redisConnection is exported
+import crypto from 'crypto';
 
 const GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
 const GITHUB_RATE_LIMIT_KEY_PREFIX = 'github:rate_limit'; // Redis key prefix
+const GITHUB_CACHE_KEY_PREFIX = 'github:cache'; // Redis key prefix for results
 
 interface RateLimitInfo {
   remaining: number;
@@ -15,6 +17,8 @@ interface GitHubGraphqlRequestOptions {
   query: string;
   variables?: Record<string, any>;
   operationName?: string;
+  useCache?: boolean;
+  cacheTTL?: number; // in seconds
 }
 
 interface RateLimitData {
@@ -30,7 +34,7 @@ interface RateLimitData {
 
 class GitHubGraphqlClient {
   private tokens: string[];
-  private redis: Redis.Redis; // Using ioredis
+  private redis: RedisClient;
   private axiosClient: AxiosInstance;
   private tokenIndex: number = 0; // To keep track of the current token index
 
@@ -151,7 +155,26 @@ class GitHubGraphqlClient {
   }
 
   async request<T>(options: GitHubGraphqlRequestOptions): Promise<T> {
-    const { query, variables, operationName } = options;
+    const { query, variables, operationName, useCache = true, cacheTTL = 3600 } = options;
+
+    // Caching logic
+    let cacheKey = '';
+    if (useCache) {
+      const hash = crypto.createHash('sha256')
+        .update(JSON.stringify({ query, variables }))
+        .digest('hex');
+      cacheKey = `${GITHUB_CACHE_KEY_PREFIX}:${hash}`;
+
+      try {
+        const cachedResult = await this.redis.get(cacheKey);
+        if (cachedResult) {
+          console.log(`Cache hit for query: ${operationName || 'unnamed'}`);
+          return JSON.parse(cachedResult) as T;
+        }
+      } catch (error) {
+        console.error('Error reading from Redis cache:', error);
+      }
+    }
 
     let bestTokenInfo;
     try {
@@ -187,21 +210,29 @@ class GitHubGraphqlClient {
         'x-ratelimit-reset': String(resetTime),
       });
 
-      // If the response data is structured with a 'data' field for the query result
+      // Extract result
+      let result: T;
       if (response.data && response.data.data) {
-        return response.data.data as T;
+        result = response.data.data as T;
       } else {
-        // Handle cases where the response might not have the nested 'data' field,
-        // or if it's an error response.
-        // GitHub GraphQL API typically returns errors in the 'errors' field.
         if (response.data.errors) {
           console.error('GitHub GraphQL API returned errors:', response.data.errors);
           throw new Error('GitHub GraphQL API errors: ' + JSON.stringify(response.data.errors));
         }
-        // If no errors and no nested data, return the entire response data object
-        // This might be useful for introspection queries or status checks
-        return response.data as T;
+        result = response.data as unknown as T;
       }
+
+      // Store in cache if enabled
+      if (useCache && cacheKey) {
+        try {
+          await this.redis.set(cacheKey, JSON.stringify(result), 'EX', cacheTTL);
+          console.log(`Cached result for query: ${operationName || 'unnamed'} with TTL ${cacheTTL}s`);
+        } catch (error) {
+          console.error('Error writing to Redis cache:', error);
+        }
+      }
+
+      return result;
 
     } catch (error: any) {
       console.error(`GitHub GraphQL request failed for token index ${tokenIndex}:`, error.message);
