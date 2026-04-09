@@ -1,4 +1,4 @@
-import { UserAnalysis } from './github';
+import { UserAnalysis } from './github.js';
 
 export type ExperienceLevel =
   | "Newcomer"
@@ -95,8 +95,8 @@ export function computeScore(analysis: UserAnalysis): ScoredUser {
     if (userPRs > 0) {
       const repoSkills = new Set<string>();
       if (repo.primaryLanguage) repoSkills.add(repo.primaryLanguage.toLowerCase());
-      repo.languages.forEach(l => repoSkills.add(l.toLowerCase()));
-      repo.topics.forEach(t => repoSkills.add(t.toLowerCase()));
+      repo.languages.forEach((l: string) => repoSkills.add(l.toLowerCase()));
+      repo.topics.forEach((t: string) => repoSkills.add(t.toLowerCase()));
 
       repoSkills.forEach(skill => {
         skillCounts[skill] = (skillCounts[skill] || 0) + 1;

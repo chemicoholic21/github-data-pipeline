@@ -2,7 +2,7 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     // File Layout
-    "rootDir": "./src",
+    "rootDir": ".",
     "outDir": "./dist",
 
     // Environment Settings
@@ -23,6 +23,8 @@
     "strict": true,
     "moduleResolution": "nodenext", // Important for Node.js environments
     "esModuleInterop": true,     // Allows default imports from CommonJS modules
-    "skipLibCheck": true,        // Skip type checking of declaration files
-  }
+    "skipLibCheck": true        // Skip type checking of declaration files
+  },
+  "include": ["src/**/*", "bulk-discover.ts", "drizzle.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

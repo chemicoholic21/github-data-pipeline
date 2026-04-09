@@ -1,5 +1,5 @@
 // src/lib/cache.ts
-import { redis } from './redis';
+import { redis } from './redis.js';
 
 export async function withCache<T>(
   key: string,

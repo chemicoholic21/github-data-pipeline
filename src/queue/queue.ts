@@ -1,6 +1,6 @@
-import Redis from 'ioredis';
-import { Queue, Worker, Job } from 'bullmq';
-import { config } from '../utils/config';
+import { Redis } from 'ioredis';
+import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { config } from '../utils/config.js';
 import axiosLib from 'axios';
 
 const axios = (axiosLib as any).default || axiosLib;
@@ -16,12 +16,15 @@ export interface RedisClient {
 
 // --- Redis Client Setup ---
 let redisConnection: RedisClient;
+let ioRedisInstance: Redis | null = null;
+
 if (config.redisUrl) {
   // Use Redis protocol
   try {
-    redisConnection = new Redis(config.redisUrl, {
+    ioRedisInstance = new Redis(config.redisUrl, {
       maxRetriesPerRequest: null, // Prevent retries if connection is lost
-    }) as unknown as RedisClient;
+    });
+    redisConnection = ioRedisInstance as unknown as RedisClient;
   } catch (error: any) {
     console.warn('Failed to initialize Redis connection:', error.message);
     redisConnection = createMockRedis();
@@ -55,7 +58,7 @@ function createUpstashRestRedis(restUrl: string, token: string): RedisClient {
   };
 
   return {
-    on: (event: string, callback: Function) => {
+    on: (event: string, callback: (...args: any[]) => void) => {
       // Mock events - Upstash REST doesn't support real-time events like 'connect' or 'error' in the same way
       if (event === 'connect') {
         setTimeout(callback, 0);
@@ -87,7 +90,7 @@ function createMockRedis(): RedisClient {
   } as RedisClient;
 }
 
-redisConnection.on('error', (err) => {
+redisConnection.on('error', (err: Error) => {
   console.error('Redis Connection Error:', err);
 });
 
@@ -103,11 +106,16 @@ interface UsernameJob {
   username: string;
 }
 
+// Mock queue type for when Redis is not available
+interface MockQueue {
+  add: (name: string, data: UsernameJob) => Promise<{ id: string }>;
+}
+
 // Create a BullMQ Queue instance
-let githubPipelineQueue;
-if (config.redisUrl) {
+let githubPipelineQueue: Queue<UsernameJob> | MockQueue;
+if (config.redisUrl && ioRedisInstance) {
   githubPipelineQueue = new Queue<UsernameJob>(queueName, {
-    connection: redisConnection,
+    connection: ioRedisInstance,
   });
 } else {
   githubPipelineQueue = {
@@ -115,42 +123,40 @@ if (config.redisUrl) {
   };
 }
 
+// Mock worker type
+interface MockWorker {
+  on: (event: string, callback: (...args: any[]) => void) => void;
+}
+
 // --- BullMQ Worker Setup ---
-let worker;
-if (config.redisUrl) {
+let worker: Worker<UsernameJob> | MockWorker;
+if (config.redisUrl && ioRedisInstance) {
   worker = new Worker<UsernameJob>(queueName, async (job: Job<UsernameJob>) => {
-  const { username } = job.data;
-  console.log(`Processing job for username: ${username} (ID: ${job.id})`);
+    const { username } = job.data;
+    console.log(`Processing job for username: ${username} (ID: ${job.id})`);
 
-  // Simulate work that might fail
-  if (username === 'fail-me') {
-    throw new Error(`Simulated failure for user: ${username}`);
-  }
+    // Simulate work that might fail
+    if (username === 'fail-me') {
+      throw new Error(`Simulated failure for user: ${username}`);
+    }
 
-  // Simulate successful job completion
-  console.log(`Job completed for username: ${username}`);
-  return { result: `Processed ${username}` };
+    // Simulate successful job completion
+    console.log(`Job completed for username: ${username}`);
+    return { result: `Processed ${username}` };
 
-}, {
-  connection: redisConnection,
-  // Retry strategy with exponential backoff
-  limiter: {
-    max: 10, // Max number of jobs that can be processed concurrently
-    duration: 1000, // Duration in ms
-  },
-  settings: {
-    // Exponential backoff: retry after 5s, 10s, 20s, ...
-    backoffStrategy: (delay, count) => {
-      return delay * Math.pow(2, count); // delay starts at 1000ms, count is retry number
+  }, {
+    connection: ioRedisInstance,
+    // Retry strategy with exponential backoff
+    limiter: {
+      max: 10, // Max number of jobs that can be processed concurrently
+      duration: 1000, // Duration in ms
     },
-    retryFailedTaskWorker: true, // Enable retrying failed tasks
-    maxStalledJobCount: 10, // Number of times to retry stalled jobs
-  },
-  // This is crucial for enabling the retry mechanism for failed jobs
-  // If a job fails, BullMQ will automatically retry it based on backoffStrategy
-  // The default retry options might be sufficient, but explicit configuration is clearer.
-  // For example, to set max retries:
-  // maxRetriesPerJob: 3, // default is 0, meaning no retries
+    settings: {
+      // Exponential backoff: retry after 5s, 10s, 20s, ...
+      backoffStrategy: (attemptsMade: number) => {
+        return 1000 * Math.pow(2, attemptsMade); // delay starts at 1000ms
+      },
+    },
   });
 } else {
   worker = {
@@ -161,7 +167,7 @@ if (config.redisUrl) {
 
 // --- Event Listeners for Logging ---
 
-if (config.redisUrl) {
+if (config.redisUrl && ioRedisInstance && worker instanceof Worker) {
   // Worker events
   worker.on('completed', (job: Job<UsernameJob>) => {
     console.log(`Job ${job.id} for user ${job.data.username} completed.`);
@@ -179,10 +185,13 @@ if (config.redisUrl) {
     console.error('Worker encountered an error:', err);
   });
 
-  // Queue events
-  githubPipelineQueue.on('error', (err) => {
-    console.error('Queue encountered an error:', err);
-  });
+  // Queue events - use QueueEvents for queue-level events
+  if (githubPipelineQueue instanceof Queue) {
+    const queueEvents = new QueueEvents(queueName, { connection: ioRedisInstance });
+    queueEvents.on('error', (err: Error) => {
+      console.error('Queue encountered an error:', err);
+    });
+  }
 }
 
 // Optional: You might want to expose the queue and worker instances

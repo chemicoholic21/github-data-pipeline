@@ -1,5 +1,5 @@
-import { config } from '../utils/config';
-import { redisConnection } from '../queue/queue';
+import { config } from '../utils/config.js';
+import { redisConnection } from '../queue/queue.js';
 
 interface TokenData {
   token: string;
@@ -9,7 +9,7 @@ interface TokenData {
 
 const RATE_LIMIT_KEY_PREFIX = 'github:rate_limit:';
 
-let tokens: TokenData[] = config.githubTokens.map(token => ({
+let tokens: TokenData[] = config.githubTokens.map((token: string) => ({
   token,
   remaining: 5000, // GitHub's default rate limit for authenticated requests
   resetTime: 0,

@@ -1,8 +1,8 @@
 // src/app/actions.ts
 'use server';
 
-import { sql } from '../lib/db';
-import { withCache } from '../lib/cache';
+import { sql } from '../lib/db.js';
+import { withCache } from '../lib/cache.js';
 
 interface MemberProfile {
   username: string;

@@ -1,5 +1,5 @@
 import { db } from "./src/db/dbClient.js";
-import { analyses, leaderboard } from "./src/lib/schema.js";
+import { analyses, leaderboard } from "./src/db/schema.js";
 import { eq, sql } from "drizzle-orm";
 import { Octokit } from "@octokit/rest";
 import { getBestToken } from "./src/lib/pat-pool.js";
@@ -229,7 +229,7 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
 }
 
 const location = process.argv[2] || "Sydney";
-const startIdx = parseInt(process.argv[3]) || 0;
-const startPage = parseInt(process.argv[4]) || 1;
+const startIdx = parseInt(process.argv[3] ?? "0", 10);
+const startPage = parseInt(process.argv[4] ?? "1", 10);
 
 bulkDiscover(location, startIdx, startPage).catch(console.error);
