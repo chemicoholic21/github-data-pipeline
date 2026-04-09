@@ -37,6 +37,15 @@ Thumbs.db
 # If you have a build directory that is not `dist`
 # build/
 
+# Compiled JavaScript output
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# Use pnpm, ignore npm lock file
+package-lock.json
+
 # Test files
 # *.test.ts
 # *.spec.ts

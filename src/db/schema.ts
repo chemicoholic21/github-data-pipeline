@@ -37,5 +37,6 @@ export const leaderboard = pgTable('leaderboard', {
   twitterUsername: text('twitter_username'),
   linkedin: text('linkedin'),
   hireable: boolean('hireable').notNull().default(false),
+  createdAt: timestamp('created_at'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
