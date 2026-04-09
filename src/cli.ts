@@ -1,6 +1,6 @@
 // Basic CLI entry point
-import { config } from './utils/config';
-import { githubPipelineQueue, UsernameJob, worker } from './queue/queue'; // Import queue and worker
+import { config } from './utils/config.js';
+import { githubPipelineQueue, UsernameJob, worker } from './queue/queue.js'; // Import queue and worker
 
 async function main() {
   console.log('github-data-pipeline started!');
@@ -23,18 +23,18 @@ async function main() {
   try {
     console.log('Adding example jobs to the queue...');
 
-    const job1: Job<UsernameJob> = await githubPipelineQueue.add('processUser', { username: 'octocat' });
+    const job1 = await githubPipelineQueue.add('processUser', { username: 'octocat' });
     console.log(`Added job ${job1.id} to process user: octocat`);
 
-    const job2: Job<UsernameJob> = await githubPipelineQueue.add('processUser', { username: 'testuser123' });
+    const job2 = await githubPipelineQueue.add('processUser', { username: 'testuser123' });
     console.log(`Added job ${job2.id} to process user: testuser123`);
 
     // Example of a job that will fail and retry
-    const job3: Job<UsernameJob> = await githubPipelineQueue.add('processUser', { username: 'fail-me' });
+    const job3 = await githubPipelineQueue.add('processUser', { username: 'fail-me' });
     console.log(`Added job ${job3.id} to process user: fail-me (expected to fail and retry)`);
 
     // Example with a specific job name (first argument to add)
-    const job4: Job<UsernameJob> = await githubPipelineQueue.add('processAnotherUser', { username: 'anotheruser' });
+    const job4 = await githubPipelineQueue.add('processAnotherUser', { username: 'anotheruser' });
     console.log(`Added job ${job4.id} with custom name 'processAnotherUser' for user: anotheruser`);
 
   } catch (error) {

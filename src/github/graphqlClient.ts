@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { config } from '../utils/config';
-import { redisConnection, RedisClient } from '../queue/queue'; // Assuming redisConnection is exported
+import { config } from '../utils/config.js';
+import { redisConnection, RedisClient } from '../queue/queue.js'; // Assuming redisConnection is exported
 import crypto from 'crypto';
 
 const GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
@@ -30,6 +30,11 @@ interface RateLimitData {
     nodeCount?: number; // Might be available in some contexts
     nodes?: number; // Might be available in some contexts
   };
+}
+
+interface GraphQLResponse<T> {
+  data?: T;
+  errors?: Array<{ message: string }>;
 }
 
 class GitHubGraphqlClient {
@@ -101,7 +106,7 @@ class GitHubGraphqlClient {
     const resetTime = parseInt(headers['x-ratelimit-reset'] || '0', 10); // Unix timestamp
     const cost = parseInt(headers['x-ratelimit-cost'] || '1', 10); // Default cost to 1 if not provided
 
-    if (remaining !== NaN && resetTime !== NaN && cost !== NaN) {
+    if (!Number.isNaN(remaining) && !Number.isNaN(resetTime) && !Number.isNaN(cost)) {
       const rateLimitInfo: RateLimitInfo = { remaining, resetTime, cost };
       const redisKey = this.getRateLimitRedisKey(tokenIndex);
       try {
@@ -151,7 +156,12 @@ class GitHubGraphqlClient {
       throw new Error('GitHub API authentication failed: No valid GitHub tokens available or all tokens are rate-limited.');
     }
 
-    return { token: this.tokens[bestTokenIndex], index: bestTokenIndex, rateLimit: bestTokenRateLimit };
+    const token = this.tokens[bestTokenIndex];
+    if (!token) {
+      throw new Error('GitHub API authentication failed: No valid GitHub tokens available or all tokens are rate-limited.');
+    }
+
+    return { token, index: bestTokenIndex, rateLimit: bestTokenRateLimit };
   }
 
   async request<T>(options: GitHubGraphqlRequestOptions): Promise<T> {
@@ -189,7 +199,7 @@ class GitHubGraphqlClient {
     this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
     try {
-      const response: AxiosResponse<RateLimitData & { data: T }> = await this.axiosClient.post('', {
+      const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
         query,
         variables,
         operationName,

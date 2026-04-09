@@ -1,20 +1,20 @@
-import { gitHubGraphqlClient } from '../github/graphqlClient';
-import { getBestToken, updateTokenUsage } from './pat-pool';
+import { gitHubGraphqlClient } from '../github/graphqlClient.js';
+import { getBestToken, updateTokenUsage } from './pat-pool.js';
 
 interface User {
   login: string;
-  name?: string;
-  avatarUrl?: string;
-  url?: string;
-  company?: string;
-  blog?: string;
-  location?: string;
-  email?: string;
-  bio?: string;
-  twitterUsername?: string;
-  linkedin?: string;
-  isHireable?: boolean;
-  websiteUrl?: string;
+  name?: string | undefined;
+  avatarUrl?: string | undefined;
+  url?: string | undefined;
+  company?: string | undefined;
+  blog?: string | undefined;
+  location?: string | undefined;
+  email?: string | undefined;
+  bio?: string | undefined;
+  twitterUsername?: string | undefined;
+  linkedin?: string | undefined;
+  isHireable?: boolean | undefined;
+  websiteUrl?: string | undefined;
   followers: number;
   following: number;
   createdAt: string;
@@ -38,7 +38,7 @@ interface LanguageBreakdown {
   [language: string]: number;
 }
 
-interface UserAnalysis {
+export interface UserAnalysis {
   user: User;
   repos: Repository[];
   languageBreakdown: LanguageBreakdown;
@@ -230,7 +230,7 @@ const extractLinkedIn = (
   socialAccounts: Array<{ provider: string; url: string }> | undefined,
   bio: string | null,
   websiteUrl: string | null
-) => {
+): string | null => {
   // 1. Check social accounts
   const linkedInAccount = socialAccounts?.find(account => account.provider === 'LINKEDIN');
   if (linkedInAccount) return linkedInAccount.url;
@@ -286,8 +286,8 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
           isFork: node.isFork,
           mergedPrCount: node.pullRequests.totalCount,
           mergedPrsByUserCount: 0, // Will be filled below
-          topics: node.repositoryTopics.nodes.map(n => n.topic.name),
-          languages: node.languages.nodes.map(n => n.name),
+          topics: node.repositoryTopics.nodes.map((n: { topic: { name: string } }) => n.topic.name),
+          languages: node.languages.nodes.map((n: { name: string }) => n.name),
         });
       }
     }
@@ -342,25 +342,25 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
 
     // Extract unique skills from languages and topics
     const uniqueSkills = Array.from(new Set([
-      ...repos.flatMap(repo => repo.languages.map(l => l.toLowerCase())),
-      ...repos.flatMap(repo => repo.topics.map(t => t.toLowerCase())),
+      ...repos.flatMap(repo => repo.languages.map((l: string) => l.toLowerCase())),
+      ...repos.flatMap(repo => repo.topics.map((t: string) => t.toLowerCase())),
     ].filter(Boolean)));
 
     return {
       user: {
         login: user.login,
-        name: user.name,
+        name: user.name ?? undefined,
         avatarUrl: user.avatarUrl,
         url: user.url,
-        company: user.company,
-        blog: user.websiteUrl,
-        location: user.location,
+        company: user.company ?? undefined,
+        blog: user.websiteUrl ?? undefined,
+        location: user.location ?? undefined,
         email: user.email,
-        bio: user.bio,
-        twitterUsername: user.twitterUsername,
-        linkedin: extractLinkedIn(user.socialAccounts.nodes, user.bio, user.websiteUrl),
+        bio: user.bio ?? undefined,
+        twitterUsername: user.twitterUsername ?? undefined,
+        linkedin: extractLinkedIn(user.socialAccounts.nodes, user.bio, user.websiteUrl) ?? undefined,
         isHireable: user.isHireable,
-        websiteUrl: user.websiteUrl,
+        websiteUrl: user.websiteUrl ?? undefined,
         followers: user.followers.totalCount,
         following: user.following.totalCount,
         createdAt: user.createdAt,
