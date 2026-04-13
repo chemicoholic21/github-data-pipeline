@@ -13,6 +13,8 @@ export async function markTokenExhausted(index: number, resetTime: number = 0) {
   const now = Math.floor(Date.now() / 1000);
   const actualResetTime = resetTime > now ? resetTime : now + 3600;
 
+  console.log(`[TokenPool] Marking token ${index} as exhausted, resetTime=${actualResetTime}`);
+
   await db
     .insert(tokenRateLimit)
     .values({
@@ -41,6 +43,8 @@ export async function getBestToken(): Promise<TokenInfo> {
   let bestTokenInfo: TokenInfo | null = null;
   let highestRemaining = -1;
 
+  console.log(`[TokenPool] Checking ${tokens.length} tokens at time ${now}`);
+
   for (let i = 0; i < tokens.length; i++) {
     const rows = await db
       .select()
@@ -56,10 +60,15 @@ export async function getBestToken(): Promise<TokenInfo> {
       remaining = row.remaining;
       resetTime = row.resetTime;
 
+      console.log(`[TokenPool] Token ${i}: remaining=${remaining}, resetTime=${resetTime}`);
+
       if (resetTime > 0 && resetTime < now) {
+        console.log(`[TokenPool] Token ${i} reset time passed, resetting...`);
         remaining = 5000;
         resetTime = 0;
       }
+    } else {
+      console.log(`[TokenPool] Token ${i}: no record found, defaulting to 5000`);
     }
 
     if (remaining > highestRemaining) {
@@ -67,6 +76,10 @@ export async function getBestToken(): Promise<TokenInfo> {
       bestTokenInfo = { token: tokens[i]!, index: i, remaining, resetTime };
     }
   }
+
+  console.log(
+    `[TokenPool] Best token: index=${bestTokenInfo?.index}, remaining=${bestTokenInfo?.remaining}`
+  );
 
   if (!bestTokenInfo || highestRemaining <= 0) {
     throw new Error('rate-limited-all-tokens');
@@ -76,7 +89,9 @@ export async function getBestToken(): Promise<TokenInfo> {
 }
 
 export async function updateTokenRateLimit(index: number, remaining: number, resetTime: number) {
-  const ttl = Math.max(60, resetTime - Math.floor(Date.now() / 1000) + 60);
+  console.log(
+    `[TokenPool] Updating token ${index}: remaining=${remaining}, resetTime=${resetTime}`
+  );
 
   await db
     .insert(tokenRateLimit)
@@ -94,4 +109,9 @@ export async function updateTokenRateLimit(index: number, remaining: number, res
         lastUpdated: new Date(),
       },
     });
+}
+
+export async function clearAllTokenLimits(): Promise<void> {
+  console.log('[TokenPool] Clearing all token rate limits');
+  await db.delete(tokenRateLimit);
 }
