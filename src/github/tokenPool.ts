@@ -45,47 +45,71 @@ export async function getBestToken(): Promise<TokenInfo> {
 
   console.log(`[TokenPool] Checking ${tokens.length} tokens at time ${now}`);
 
-  for (let i = 0; i < tokens.length; i++) {
-    const rows = await db
-      .select()
-      .from(tokenRateLimit)
-      .where(eq(tokenRateLimit.tokenIndex, i))
-      .limit(1);
+  try {
+    for (let i = 0; i < tokens.length; i++) {
+      console.log(`[TokenPool] Processing token ${i}...`);
 
-    let remaining = 5000;
-    let resetTime = 0;
-
-    if (rows.length > 0) {
-      const row = rows[0]!;
-      remaining = row.remaining;
-      resetTime = row.resetTime;
-
-      console.log(`[TokenPool] Token ${i}: remaining=${remaining}, resetTime=${resetTime}`);
-
-      if (resetTime > 0 && resetTime < now) {
-        console.log(`[TokenPool] Token ${i} reset time passed, resetting...`);
-        remaining = 5000;
-        resetTime = 0;
+      let rows: (typeof tokenRateLimit.$inferSelect)[] = [];
+      try {
+        rows = await db
+          .select()
+          .from(tokenRateLimit)
+          .where(eq(tokenRateLimit.tokenIndex, i))
+          .limit(1);
+      } catch (dbError) {
+        console.error(`[TokenPool] DB error for token ${i}:`, dbError);
+        // If DB fails, assume no record (default to 5000)
+        rows = [];
       }
-    } else {
-      console.log(`[TokenPool] Token ${i}: no record found, defaulting to 5000`);
-    }
 
-    if (remaining > highestRemaining) {
-      highestRemaining = remaining;
-      bestTokenInfo = { token: tokens[i]!, index: i, remaining, resetTime };
+      console.log(`[TokenPool] Token ${i}: got ${rows.length} rows from DB`);
+
+      let remaining = 5000;
+      let resetTime = 0;
+
+      if (rows.length > 0) {
+        const row = rows[0]!;
+        remaining = row.remaining;
+        resetTime = row.resetTime;
+
+        console.log(
+          `[TokenPool] Token ${i}: DB has remaining=${remaining}, resetTime=${resetTime}`
+        );
+
+        if (resetTime > 0 && resetTime < now) {
+          console.log(`[TokenPool] Token ${i} reset time passed, resetting...`);
+          remaining = 5000;
+          resetTime = 0;
+        }
+      } else {
+        console.log(`[TokenPool] Token ${i}: no record found, defaulting to 5000`);
+      }
+
+      console.log(
+        `[TokenPool] Token ${i}: final remaining=${remaining}, highestRemaining=${highestRemaining}`
+      );
+
+      if (remaining > highestRemaining) {
+        highestRemaining = remaining;
+        bestTokenInfo = { token: tokens[i]!, index: i, remaining, resetTime };
+        console.log(`[TokenPool] Token ${i} is now best, highestRemaining=${highestRemaining}`);
+      }
     }
+  } catch (err) {
+    console.error('[TokenPool] Error in getBestToken:', err);
+    throw err;
   }
 
   console.log(
-    `[TokenPool] Best token: index=${bestTokenInfo?.index}, remaining=${bestTokenInfo?.remaining}`
+    `[TokenPool] Best token: index=${bestTokenInfo?.index}, remaining=${bestTokenInfo?.remaining}, highestRemaining=${highestRemaining}`
   );
 
   if (!bestTokenInfo || highestRemaining <= 0) {
+    console.log('[TokenPool] Throwing rate-limited-all-tokens');
     throw new Error('rate-limited-all-tokens');
   }
 
-  return bestTokenInfo;
+  return bestTokenInfo!;
 }
 
 export async function updateTokenRateLimit(index: number, remaining: number, resetTime: number) {
