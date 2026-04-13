@@ -8,7 +8,7 @@
     "dev": "tsx watch src/cli.ts",
     "build": "tsc",
     "start": "node dist/cli.js",
-    "bulk-discover": "tsx bulk-discover.ts",
+    "bulk-discover": "tsx src/scripts/bulk-discover.ts",
     "db:push": "drizzle-kit push",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
