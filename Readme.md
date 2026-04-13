@@ -78,7 +78,9 @@ CLI / scripts  →  BullMQ queue  →  Workers  →  GitHub API
 Each pipeline run follows this sequence — from trigger to durable storage:
 
 <br/>
-
+ <p align="center">
+  <img src="github_api_cache_hit_miss_flow.svg" alt="GitHub API cache hit/miss flow" width="100%" />
+</p>
 
 <br/>
 
