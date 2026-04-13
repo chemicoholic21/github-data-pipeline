@@ -22,9 +22,9 @@
     // Recommended Options
     "strict": true,
     "moduleResolution": "nodenext", // Important for Node.js environments
-    "esModuleInterop": true,     // Allows default imports from CommonJS modules
-    "skipLibCheck": true        // Skip type checking of declaration files
+    "esModuleInterop": true, // Allows default imports from CommonJS modules
+    "skipLibCheck": true // Skip type checking of declaration files
   },
   "include": ["src/**/*", "drizzle.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/scripts/enrich-linkedin-apify.ts"]
 }

@@ -4,7 +4,7 @@
 import { sql as db } from '../lib/db.js';
 import { leaderboard } from '../db/schema.js';
 import { desc, gt, eq } from 'drizzle-orm';
-import { withCache } from '../lib/cache.js';
+import { withCache } from '../lib/apiCache.js';
 
 interface MemberProfile {
   username: string;
@@ -32,7 +32,7 @@ export async function getTopMembers(limit = 10): Promise<MemberProfile[]> {
         .where(gt(leaderboard.totalScore, 0))
         .orderBy(desc(leaderboard.totalScore))
         .limit(limit);
-      
+
       return results as MemberProfile[];
     },
     60
@@ -55,7 +55,7 @@ export async function getMemberProfile(username: string): Promise<MemberProfile 
         .from(leaderboard)
         .where(eq(leaderboard.username, username))
         .limit(1);
-      
+
       return (results[0] as MemberProfile) ?? null;
     },
     30

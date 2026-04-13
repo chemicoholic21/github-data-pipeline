@@ -5,7 +5,7 @@ import { Octokit } from '@octokit/rest';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from '../github/tokenPool.js';
 import { fetchUserAnalysis } from '../lib/github.js';
 import { computeScore } from '../lib/scoring.js';
-import { redis } from '../lib/redis.js';
+import { getCachedUser } from '../lib/cache.js';
 
 const CONCURRENCY = 3;
 const WAIT_TIME_MS = 60 * 1000; // Reduced to 1 minute for "all tokens exhausted" case
@@ -148,14 +148,12 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
             try {
               await Promise.all(
                 todo.map(async (username) => {
-                  const cacheKey = `user-analysis:${username.toLowerCase()}`;
-                  const isCached = await redis.get(cacheKey);
-
+                  const cached = await getCachedUser(username);
                   const rawData = await fetchUserAnalysis(username);
                   const scored = computeScore(rawData);
                   await insertUserData(scored, username);
 
-                  const label = isCached ? '[CACHED]' : '[ADDED]';
+                  const label = cached ? '[CACHED]' : '[ADDED]';
                   console.log(
                     `      ${label} ${username} -> Score: ${scored.totalScore.toFixed(1)}`
                   );

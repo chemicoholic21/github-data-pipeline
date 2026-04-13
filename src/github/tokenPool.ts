@@ -1,64 +1,64 @@
-// src/github/tokenPool.ts
-import { config } from '../utils/config.js';
-import { redisConnection } from '../queue/queue.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/dbClient.js';
+import { tokenRateLimit } from '../db/schema.js';
 
 export interface TokenInfo {
   token: string;
   index: number;
   remaining: number;
-  resetTime: number; // Unix timestamp
+  resetTime: number;
 }
 
-const GITHUB_RATE_LIMIT_KEY_PREFIX = 'github:rate_limit';
-
 export async function markTokenExhausted(index: number, resetTime: number = 0) {
-  const redisKey = `${GITHUB_RATE_LIMIT_KEY_PREFIX}:${index}`;
   const now = Math.floor(Date.now() / 1000);
-  // If no reset time provided, assume 1 hour from now as a safety measure
   const actualResetTime = resetTime > now ? resetTime : now + 3600;
-  
-  try {
-    await redisConnection.set(
-      redisKey,
-      JSON.stringify({ remaining: 0, resetTime: actualResetTime }),
-      'EX',
-      actualResetTime - now + 60
-    );
-  } catch (error) {
-    console.error(`Error marking token ${index} as exhausted:`, error);
-  }
+
+  await db
+    .insert(tokenRateLimit)
+    .values({
+      tokenIndex: index,
+      remaining: 0,
+      resetTime: actualResetTime,
+      lastUpdated: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: tokenRateLimit.tokenIndex,
+      set: {
+        remaining: 0,
+        resetTime: actualResetTime,
+        lastUpdated: new Date(),
+      },
+    });
 }
 
 export async function getBestToken(): Promise<TokenInfo> {
-  const tokens = config.githubTokens;
+  const tokens = (await import('../utils/config.js')).config.githubTokens;
   if (tokens.length === 0) {
     throw new Error('No GitHub tokens found in environment variables.');
   }
 
+  const now = Math.floor(Date.now() / 1000);
   let bestTokenInfo: TokenInfo | null = null;
   let highestRemaining = -1;
-  const now = Math.floor(Date.now() / 1000);
 
   for (let i = 0; i < tokens.length; i++) {
-    const redisKey = `${GITHUB_RATE_LIMIT_KEY_PREFIX}:${i}`;
-    const cachedData = await redisConnection.get(redisKey);
-    
+    const rows = await db
+      .select()
+      .from(tokenRateLimit)
+      .where(eq(tokenRateLimit.tokenIndex, i))
+      .limit(1);
+
     let remaining = 5000;
     let resetTime = 0;
 
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        remaining = parsed.remaining;
-        resetTime = parsed.resetTime;
+    if (rows.length > 0) {
+      const row = rows[0]!;
+      remaining = row.remaining;
+      resetTime = row.resetTime;
 
-        // Reset if resetTime has passed
-        if (resetTime > 0 && resetTime < now) {
-          remaining = 5000;
-          resetTime = 0;
-        }
-      } catch (e) {
-        console.error(`Error parsing rate limit for token ${i}:`, e);
+      if (resetTime > 0 && resetTime < now) {
+        remaining = 5000;
+        resetTime = 0;
       }
     }
 
@@ -76,15 +76,22 @@ export async function getBestToken(): Promise<TokenInfo> {
 }
 
 export async function updateTokenRateLimit(index: number, remaining: number, resetTime: number) {
-  const redisKey = `${GITHUB_RATE_LIMIT_KEY_PREFIX}:${index}`;
-  try {
-    await redisConnection.set(
-      redisKey, 
-      JSON.stringify({ remaining, resetTime }), 
-      'EX', 
-      Math.max(60, resetTime - Math.floor(Date.now() / 1000) + 60)
-    );
-  } catch (error) {
-    console.error(`Error writing rate limit to Redis for token index ${index}:`, error);
-  }
+  const ttl = Math.max(60, resetTime - Math.floor(Date.now() / 1000) + 60);
+
+  await db
+    .insert(tokenRateLimit)
+    .values({
+      tokenIndex: index,
+      remaining,
+      resetTime,
+      lastUpdated: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: tokenRateLimit.tokenIndex,
+      set: {
+        remaining,
+        resetTime,
+        lastUpdated: new Date(),
+      },
+    });
 }
