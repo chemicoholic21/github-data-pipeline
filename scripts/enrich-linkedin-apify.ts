@@ -1,24 +1,23 @@
-import 'dotenv/config';
-import { db } from '../src/db/dbClient.js';
-import { leaderboard } from '../src/db/schema.js';
-import { sql, desc } from 'drizzle-orm';
+import { neon } from '@neondatabase/serverless';
+
+const DATABASE_URL = process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL not set'); })();
+const APIFY_TOKEN = process.env.APIFY_TOKEN ?? (() => { throw new Error('APIFY_TOKEN not set'); })();
+const sql = neon(DATABASE_URL);
 
 const APIFY_BASE_URL = 'https://api.apify.com/v2/acts/bestscrapers~linkedin-open-to-work-status/run-sync-get-dataset-items';
 const MAX_RETRIES = 2;
 const DELAY_MS = 1500;
 
-const getApifyToken = () => process.env.APIFY_TOKEN ?? (() => { throw new Error('APIFY_TOKEN not set'); })();
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 interface ApifyResult { isOpenToWork: boolean; }
-type LeaderboardUser = { username: string; linkedin: string; totalScore: number };
+type User = { username: string; linkedin: string; total_score: number };
 
 const apify = {
   async fetch(linkedinUrl: string): Promise<boolean | null> {
-    const token = getApifyToken();
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch(`${APIFY_BASE_URL}?token=${token}`, {
+        const res = await fetch(`${APIFY_BASE_URL}?token=${APIFY_TOKEN}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profileUrls: [linkedinUrl] }),
@@ -40,24 +39,21 @@ const apify = {
   },
 };
 
-const db_ = {
+const db = {
   async ensureColumns() {
-    await db.execute(sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`);
-    await db.execute(sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`);
+    try { await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`; } catch {}
+    try { await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`; } catch {}
   },
-  async fetchTopUsers(limit: number = 5): Promise<LeaderboardUser[]> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return db.select({
-      username: leaderboard.username,
-      linkedin: leaderboard.linkedin,
-      totalScore: leaderboard.totalScore,
-    }).from(leaderboard)
-      .where(sql`${leaderboard.linkedin} IS NOT NULL`)
-      .orderBy(desc(leaderboard.totalScore))
-      .limit(limit) as Promise<LeaderboardUser[]>;
+  async fetchTopUsers(limit: number = 5): Promise<User[]> {
+    return await sql`
+      SELECT username, linkedin, total_score FROM leaderboard
+      WHERE linkedin IS NOT NULL
+      ORDER BY total_score DESC
+      LIMIT ${limit}
+    ` as unknown as User[];
   },
   async update(username: string, isOpenToWork: boolean | null) {
-    await db.execute(sql`UPDATE leaderboard SET is_open_to_work = ${isOpenToWork}, otw_scraped_at = NOW() WHERE username = ${username}`);
+    await sql`UPDATE leaderboard SET is_open_to_work = ${isOpenToWork}, otw_scraped_at = NOW() WHERE username = ${username}`;
   },
 };
 
@@ -69,11 +65,8 @@ const log = {
 };
 
 async function main() {
-  const token = process.env.APIFY_TOKEN;
-  if (!token) { console.error('Error: APIFY_TOKEN not set'); process.exit(1); }
-
-  await db_.ensureColumns();
-  const users = await db_.fetchTopUsers(5);
+  await db.ensureColumns();
+  const users = await db.fetchTopUsers(5);
   if (!users.length) { console.log('No users to process'); return; }
 
   console.log(`Found ${users.length} users to process\n`);
@@ -84,7 +77,7 @@ async function main() {
     log.progress(processed, users.length, user.username);
     try {
       const result = await apify.fetch(user.linkedin!);
-      await db_.update(user.username, result);
+      await db.update(user.username, result);
       log.success(result);
       success++;
     } catch (e: any) {
