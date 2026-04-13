@@ -1,18 +1,18 @@
-import { db } from "./src/db/dbClient.js";
-import { analyses, leaderboard } from "./src/db/schema.js";
-import { eq, sql } from "drizzle-orm";
-import { Octokit } from "@octokit/rest";
-import { getBestToken, updateTokenRateLimit, markTokenExhausted } from "./src/github/tokenPool.js";
-import { fetchUserAnalysis } from "./src/lib/github.js";
-import { computeScore } from "./src/lib/scoring.js";
-import { redis } from "./src/lib/redis.js";
+import { db } from './db/dbClient.js';
+import { analyses, leaderboard } from './db/schema.js';
+import { sql } from 'drizzle-orm';
+import { Octokit } from '@octokit/rest';
+import { getBestToken, updateTokenRateLimit, markTokenExhausted } from './github/tokenPool.js';
+import { fetchUserAnalysis } from './lib/github.js';
+import { computeScore } from './lib/scoring.js';
+import { redis } from './lib/redis.js';
 
 const CONCURRENCY = 3;
 const WAIT_TIME_MS = 60 * 1000; // Reduced to 1 minute for "all tokens exhausted" case
 const BATCH_DELAY_MS = 200;
 
 async function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function insertUserData(scored: any, username: string) {
@@ -59,12 +59,12 @@ async function insertUserData(scored: any, username: string) {
 
   await db.insert(analyses).values(analysisData).onConflictDoUpdate({
     target: analyses.id,
-    set: analysisData
+    set: analysisData,
   });
 
   await db.insert(leaderboard).values(leaderboardData).onConflictDoUpdate({
     target: leaderboard.username,
-    set: leaderboardData
+    set: leaderboardData,
   });
 }
 
@@ -72,18 +72,29 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
   console.log(`Starting High-Efficiency Pipeline for: ${location}`);
 
   const ranges = [
-    "10..20", "21..30", "31..40", "41..50",
-    "51..75", "76..100", "101..150", "151..200",
-    "201..300", "301..500", "501..1000", "1001..2000",
-    "2001..5000", "5001..10000", ">10000",
-    "0..9"
+    '10..20',
+    '21..30',
+    '31..40',
+    '41..50',
+    '51..75',
+    '76..100',
+    '101..150',
+    '151..200',
+    '201..300',
+    '301..500',
+    '501..1000',
+    '1001..2000',
+    '2001..5000',
+    '5001..10000',
+    '>10000',
+    '0..9',
   ];
 
   for (let r = startRangeIndex; r < ranges.length; r++) {
     const range = ranges[r];
     console.log(`\nSlicing Range [${r}]: followers:${range}`);
 
-    let page = (r === startRangeIndex) ? startPage : 1;
+    let page = r === startRangeIndex ? startPage : 1;
     let hasMore = true;
 
     while (hasMore && page <= 10) {
@@ -102,44 +113,54 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
 
         console.log(`  Fetching Registry Page ${page} using Token ${tokenInfo.index}...`);
         const { data, headers } = await octokit.search.users({ q, page, per_page: 100 });
-        
+
         const remaining = parseInt(headers['x-ratelimit-remaining'] || '0', 10);
         const resetTime = parseInt(headers['x-ratelimit-reset'] || '0', 10);
         await updateTokenRateLimit(tokenInfo.index, remaining, resetTime);
 
-        const usernames = data.items.map(u => u.login);
-        if (usernames.length === 0) { hasMore = false; break; }
+        const usernames = data.items.map((u) => u.login);
+        if (usernames.length === 0) {
+          hasMore = false;
+          break;
+        }
 
         console.log(`    Processing ${usernames.length} users in range ${range}`);
 
         // Freshness Check
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const existingFresh = await db.select({ id: analyses.id })
+        const existingFresh = await db
+          .select({ id: analyses.id })
           .from(analyses)
-          .where(sql`${analyses.id} IN ${usernames.map(u => u.toLowerCase())} AND ${analyses.cachedAt} > ${oneHourAgo}`);
+          .where(
+            sql`${analyses.id} IN ${usernames.map((u) => u.toLowerCase())} AND ${analyses.cachedAt} > ${oneHourAgo}`
+          );
 
-        const freshSet = new Set(existingFresh.map(f => f.id.toLowerCase()));
+        const freshSet = new Set(existingFresh.map((f) => f.id.toLowerCase()));
 
         for (let i = 0; i < usernames.length; i += CONCURRENCY) {
           const batch = usernames.slice(i, i + CONCURRENCY);
-          const todo = batch.filter(u => !freshSet.has(u.toLowerCase()));
+          const todo = batch.filter((u) => !freshSet.has(u.toLowerCase()));
 
           if (todo.length === 0) continue;
 
           let batchSuccess = false;
           while (!batchSuccess) {
             try {
-              await Promise.all(todo.map(async (username) => {
-                const cacheKey = `user-analysis:${username.toLowerCase()}`;
-                const isCached = await redis.get(cacheKey);
-                
-                const rawData = await fetchUserAnalysis(username);
-                const scored = computeScore(rawData);
-                await insertUserData(scored, username);
-                
-                const label = isCached ? "[CACHED]" : "[ADDED]";
-                console.log(`      ${label} ${username} -> Score: ${scored.totalScore.toFixed(1)}`);
-              }));
+              await Promise.all(
+                todo.map(async (username) => {
+                  const cacheKey = `user-analysis:${username.toLowerCase()}`;
+                  const isCached = await redis.get(cacheKey);
+
+                  const rawData = await fetchUserAnalysis(username);
+                  const scored = computeScore(rawData);
+                  await insertUserData(scored, username);
+
+                  const label = isCached ? '[CACHED]' : '[ADDED]';
+                  console.log(
+                    `      ${label} ${username} -> Score: ${scored.totalScore.toFixed(1)}`
+                  );
+                })
+              );
               batchSuccess = true;
               await sleep(BATCH_DELAY_MS);
             } catch (batchError: any) {
@@ -148,16 +169,18 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
                 // If it was a 403, getBestToken will naturally pick a new one next time
                 // if fetchUserAnalysis already marked it as exhausted.
                 // We just break the batch retry to pick a new token at the top level.
-                break; 
+                break;
               } else {
-                console.log(`      ⚠️ Batch error for ${todo.join(',')}: ${batchError.message}. Skipping.`);
+                console.log(
+                  `      ⚠️ Batch error for ${todo.join(',')}: ${batchError.message}. Skipping.`
+                );
                 batchSuccess = true;
               }
             }
           }
           if (!batchSuccess) {
             // This means we hit a rate limit and need to restart the outer loop to get a new token
-            break; 
+            break;
           }
         }
 
@@ -170,7 +193,7 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
           console.log(`  🚫 Token ${tokenInfo.index} Rate Limited. Retry-After: ${retryAfter}s`);
           await markTokenExhausted(tokenInfo.index, resetTime);
           // Don't increment page, just retry with a new token
-          continue; 
+          continue;
         } else {
           console.error(`  Range Error:`, e.message);
           hasMore = false;
@@ -181,8 +204,8 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
   console.log(`\nMission Complete.`);
 }
 
-const location = process.argv[2] || "Sydney";
-const startIdx = parseInt(process.argv[3] ?? "0", 10);
-const startPage = parseInt(process.argv[4] ?? "1", 10);
+const location = process.argv[2] || 'Sydney';
+const startIdx = parseInt(process.argv[3] ?? '0', 10);
+const startPage = parseInt(process.argv[4] ?? '1', 10);
 
 bulkDiscover(location, startIdx, startPage).catch(console.error);

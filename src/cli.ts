@@ -1,6 +1,6 @@
 // Basic CLI entry point
 import { config } from './utils/config.js';
-import { githubPipelineQueue, UsernameJob, worker } from './queue/queue.js'; // Import queue and worker
+import { githubPipelineQueue } from './queue/queue.js';
 
 async function main() {
   console.log('github-data-pipeline started!');
@@ -36,7 +36,6 @@ async function main() {
     // Example with a specific job name (first argument to add)
     const job4 = await githubPipelineQueue.add('processAnotherUser', { username: 'anotheruser' });
     console.log(`Added job ${job4.id} with custom name 'processAnotherUser' for user: anotheruser`);
-
   } catch (error) {
     console.error('Failed to add jobs to the queue:', error);
   }

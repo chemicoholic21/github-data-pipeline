@@ -16,7 +16,7 @@ export async function markTokenExhausted(index: number, resetTime: number = 0) {
   const now = Math.floor(Date.now() / 1000);
   // If no reset time provided, assume 1 hour from now as a safety measure
   const actualResetTime = resetTime > now ? resetTime : now + 3600;
-  
+
   try {
     await redisConnection.set(
       redisKey,
@@ -42,7 +42,7 @@ export async function getBestToken(): Promise<TokenInfo> {
   for (let i = 0; i < tokens.length; i++) {
     const redisKey = `${GITHUB_RATE_LIMIT_KEY_PREFIX}:${i}`;
     const cachedData = await redisConnection.get(redisKey);
-    
+
     let remaining = 5000;
     let resetTime = 0;
 
@@ -79,9 +79,9 @@ export async function updateTokenRateLimit(index: number, remaining: number, res
   const redisKey = `${GITHUB_RATE_LIMIT_KEY_PREFIX}:${index}`;
   try {
     await redisConnection.set(
-      redisKey, 
-      JSON.stringify({ remaining, resetTime }), 
-      'EX', 
+      redisKey,
+      JSON.stringify({ remaining, resetTime }),
+      'EX',
       Math.max(60, resetTime - Math.floor(Date.now() / 1000) + 60)
     );
   } catch (error) {

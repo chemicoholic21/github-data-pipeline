@@ -43,7 +43,8 @@ class GitHubGraphqlClient {
     // Caching logic
     let cacheKey = '';
     if (useCache) {
-      const hash = crypto.createHash('sha256')
+      const hash = crypto
+        .createHash('sha256')
         .update(JSON.stringify({ query, variables }))
         .digest('hex');
       cacheKey = `${GITHUB_CACHE_KEY_PREFIX}:${hash}`;
@@ -97,12 +98,21 @@ class GitHubGraphqlClient {
       }
 
       return result;
-
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 403 && (error.response.data?.message?.includes('rate limit exceeded') || error.response.data?.message?.includes('secondary rate limit'))) {
-          const remaining = parseInt(error.response.headers['x-ratelimit-remaining'] || '0', 10);
-          const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
+    } catch (error: unknown) {
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        const err = error as {
+          response?: {
+            status?: number;
+            data?: { message?: string };
+            headers?: Record<string, string>;
+          };
+        };
+        if (
+          err.response?.status === 403 &&
+          (err.response.data?.message?.includes('rate limit exceeded') ||
+            err.response.data?.message?.includes('secondary rate limit'))
+        ) {
+          const resetTime = parseInt(err.response.headers?.['x-ratelimit-reset'] || '0', 10);
           await markTokenExhausted(tokenIndex, resetTime);
         }
       }

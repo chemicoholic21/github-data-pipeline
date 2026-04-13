@@ -84,7 +84,7 @@ function createUpstashRestRedis(restUrl: string, token: string): RedisClient {
     },
     ttl: async (key: string) => {
       return await execCommand(['TTL', key]);
-    }
+    },
   } as RedisClient;
 }
 
@@ -141,33 +141,36 @@ interface MockWorker {
 // --- BullMQ Worker Setup ---
 let worker: Worker<UsernameJob> | MockWorker;
 if (config.redisUrl && ioRedisInstance) {
-  worker = new Worker<UsernameJob>(queueName, async (job: Job<UsernameJob>) => {
-    const { username } = job.data;
-    console.log(`Processing job for username: ${username} (ID: ${job.id})`);
+  worker = new Worker<UsernameJob>(
+    queueName,
+    async (job: Job<UsernameJob>) => {
+      const { username } = job.data;
+      console.log(`Processing job for username: ${username} (ID: ${job.id})`);
 
-    // Simulate work that might fail
-    if (username === 'fail-me') {
-      throw new Error(`Simulated failure for user: ${username}`);
-    }
+      // Simulate work that might fail
+      if (username === 'fail-me') {
+        throw new Error(`Simulated failure for user: ${username}`);
+      }
 
-    // Simulate successful job completion
-    console.log(`Job completed for username: ${username}`);
-    return { result: `Processed ${username}` };
-
-  }, {
-    connection: ioRedisInstance,
-    // Retry strategy with exponential backoff
-    limiter: {
-      max: 10, // Max number of jobs that can be processed concurrently
-      duration: 1000, // Duration in ms
+      // Simulate successful job completion
+      console.log(`Job completed for username: ${username}`);
+      return { result: `Processed ${username}` };
     },
-    settings: {
-      // Exponential backoff: retry after 5s, 10s, 20s, ...
-      backoffStrategy: (attemptsMade: number) => {
-        return 1000 * Math.pow(2, attemptsMade); // delay starts at 1000ms
+    {
+      connection: ioRedisInstance,
+      // Retry strategy with exponential backoff
+      limiter: {
+        max: 10, // Max number of jobs that can be processed concurrently
+        duration: 1000, // Duration in ms
       },
-    },
-  });
+      settings: {
+        // Exponential backoff: retry after 5s, 10s, 20s, ...
+        backoffStrategy: (attemptsMade: number) => {
+          return 1000 * Math.pow(2, attemptsMade); // delay starts at 1000ms
+        },
+      },
+    }
+  );
 } else {
   worker = {
     on: () => {},

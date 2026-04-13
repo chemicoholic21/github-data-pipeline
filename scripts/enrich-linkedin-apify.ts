@@ -4,8 +4,16 @@ import { neon } from '@neondatabase/serverless';
 // Load environment variables from .env.local
 config({ path: '.env.local' });
 
-const DATABASE_URL = process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL not set. Please configure .env.local'); })();
-const APIFY_TOKEN = process.env.APIFY_TOKEN ?? (() => { throw new Error('APIFY_TOKEN not set. Please configure .env.local'); })();
+const DATABASE_URL =
+  process.env.DATABASE_URL ??
+  (() => {
+    throw new Error('DATABASE_URL not set. Please configure .env.local');
+  })();
+const APIFY_TOKEN =
+  process.env.APIFY_TOKEN ??
+  (() => {
+    throw new Error('APIFY_TOKEN not set. Please configure .env.local');
+  })();
 const sql = neon(DATABASE_URL);
 
 // Apify Actor Configuration
@@ -18,7 +26,7 @@ const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1500;
 const REQUEST_DELAY_MS = 2000; // Delay between requests to avoid rate limiting
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Types
 interface ApifyResult {
@@ -86,10 +94,7 @@ const linkedinUtils = {
     try {
       const normalized = this.normalizeUrl(url);
       const urlObj = new URL(normalized);
-      return (
-        urlObj.hostname.includes('linkedin.com') &&
-        urlObj.pathname.startsWith('/in/')
-      );
+      return urlObj.hostname.includes('linkedin.com') && urlObj.pathname.startsWith('/in/');
     } catch {
       return false;
     }
@@ -135,7 +140,9 @@ const apifyClient = {
         // Handle authentication errors - don't retry
         if (res.status === 401 || res.status === 403) {
           const errorText = await res.text();
-          throw new Error(`Authentication failed (${res.status}): ${errorText}. Check your APIFY_TOKEN.`);
+          throw new Error(
+            `Authentication failed (${res.status}): ${errorText}. Check your APIFY_TOKEN.`
+          );
         }
 
         // Handle rate limiting
@@ -190,7 +197,6 @@ const apifyClient = {
         // Parse successful response
         const data = (await res.json()) as ApifyResult[];
         return this.parseResult(data);
-
       } catch (error: any) {
         // Don't retry auth errors
         if (error.message.includes('Authentication failed')) {
@@ -248,13 +254,13 @@ const db = {
 
   async fetchTopUsers(limit: number = 5): Promise<User[]> {
     console.log(`Fetching top ${limit} users with LinkedIn URLs...`);
-    const users = await sql`
+    const users = (await sql`
       SELECT username, linkedin, total_score
       FROM leaderboard
       WHERE linkedin IS NOT NULL AND linkedin != ''
       ORDER BY total_score DESC
       LIMIT ${limit}
-    ` as unknown as User[];
+    `) as unknown as User[];
 
     return users;
   },
