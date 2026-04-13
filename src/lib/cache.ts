@@ -1,10 +1,15 @@
 // src/lib/cache.ts
 import { redis } from './redis.js';
 
+export const CACHE_TTL = {
+  DEFAULT: 2592000, // 30 days
+  SHORT: 300, // 5 minutes
+};
+
 export async function withCache<T>(
   key: string,
   fetcher: () => Promise<T>,
-  ttlSeconds = 30
+  ttlSeconds = CACHE_TTL.DEFAULT
 ): Promise<T> {
   try {
     const cached = await redis.get(key);
