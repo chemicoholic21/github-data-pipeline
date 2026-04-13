@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "bulk-discover": "tsx bulk-discover.ts",
+    "enrich-linkedin": "tsx scripts/enrich-linkedin-apify.ts",
     "db:push": "drizzle-kit push",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
