@@ -102,7 +102,7 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
       try {
         tokenInfo = await getBestToken();
       } catch (e: any) {
-        console.log(`🕒 All tokens exhausted. Waiting 1 minute...`);
+        console.log(`🕒 All tokens exhausted. Waiting 1 minute... Error: ${e.message}`);
         await sleep(WAIT_TIME_MS);
         continue;
       }

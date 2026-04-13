@@ -49,11 +49,18 @@ export async function getBestToken(): Promise<TokenInfo> {
     for (let i = 0; i < tokens.length; i++) {
       console.log(`[TokenPool] Processing token ${i}...`);
 
-      const rows = await db
-        .select()
-        .from(tokenRateLimit)
-        .where(eq(tokenRateLimit.tokenIndex, i))
-        .limit(1);
+      let rows: (typeof tokenRateLimit.$inferSelect)[] = [];
+      try {
+        rows = await db
+          .select()
+          .from(tokenRateLimit)
+          .where(eq(tokenRateLimit.tokenIndex, i))
+          .limit(1);
+      } catch (dbError) {
+        console.error(`[TokenPool] DB error for token ${i}:`, dbError);
+        // If DB fails, assume no record (default to 5000)
+        rows = [];
+      }
 
       console.log(`[TokenPool] Token ${i}: got ${rows.length} rows from DB`);
 
@@ -102,7 +109,7 @@ export async function getBestToken(): Promise<TokenInfo> {
     throw new Error('rate-limited-all-tokens');
   }
 
-  return bestTokenInfo;
+  return bestTokenInfo!;
 }
 
 export async function updateTokenRateLimit(index: number, remaining: number, resetTime: number) {
