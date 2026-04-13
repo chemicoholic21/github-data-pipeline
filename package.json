@@ -10,6 +10,8 @@
     "start": "node dist/cli.js",
     "bulk-discover": "tsx bulk-discover.ts",
     "db:push": "drizzle-kit push",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -19,7 +21,12 @@
   "devDependencies": {
     "@types/ioredis": "^5.0.0",
     "@types/node": "^25.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"

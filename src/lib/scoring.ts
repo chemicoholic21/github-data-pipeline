@@ -1,11 +1,11 @@
 import { UserAnalysis } from './github.js';
 
 export type ExperienceLevel =
-  | "Newcomer"
-  | "Contributor"
-  | "Active Contributor"
-  | "Core Contributor"
-  | "Open Source Leader";
+  | 'Newcomer'
+  | 'Contributor'
+  | 'Active Contributor'
+  | 'Core Contributor'
+  | 'Open Source Leader';
 
 export interface TopRepositorySummary {
   name: string;
@@ -38,43 +38,107 @@ function scoreRepo(stars: number, userPRs: number, totalPRs: number): number {
 }
 
 export function deriveExperienceLevel(totalScore: number): ExperienceLevel {
-  if (totalScore < 10) return "Newcomer";
-  if (totalScore < 100) return "Contributor";
-  if (totalScore < 500) return "Active Contributor";
-  if (totalScore < 2000) return "Core Contributor";
-  return "Open Source Leader";
+  if (totalScore < 10) return 'Newcomer';
+  if (totalScore < 100) return 'Contributor';
+  if (totalScore < 500) return 'Active Contributor';
+  if (totalScore < 2000) return 'Core Contributor';
+  return 'Open Source Leader';
 }
 
 // Category mapping for skill categorization
 const CATEGORY_MAP = {
-  AI: ['machine-learning', 'deep-learning', 'ai', 'artificial-intelligence', 'neural-network', 'tensorflow', 'pytorch', 'keras', 'scikit-learn', 'nlp', 'computer-vision'],
-  Backend: ['api', 'server', 'backend', 'microservices', 'rest', 'graphql', 'database', 'postgresql', 'mysql', 'mongodb', 'redis', 'docker', 'kubernetes'],
-  Frontend: ['frontend', 'react', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'web', 'ui', 'ux'],
-  DevOps: ['devops', 'ci-cd', 'automation', 'infrastructure', 'terraform', 'ansible', 'jenkins', 'github-actions', 'docker', 'kubernetes', 'aws', 'azure', 'gcp'],
-  Data: ['data', 'analytics', 'big-data', 'data-science', 'sql', 'python', 'r', 'pandas', 'numpy', 'jupyter', 'data-visualization']
+  AI: [
+    'machine-learning',
+    'deep-learning',
+    'ai',
+    'artificial-intelligence',
+    'neural-network',
+    'tensorflow',
+    'pytorch',
+    'keras',
+    'scikit-learn',
+    'nlp',
+    'computer-vision',
+  ],
+  Backend: [
+    'api',
+    'server',
+    'backend',
+    'microservices',
+    'rest',
+    'graphql',
+    'database',
+    'postgresql',
+    'mysql',
+    'mongodb',
+    'redis',
+    'docker',
+    'kubernetes',
+  ],
+  Frontend: [
+    'frontend',
+    'react',
+    'vue',
+    'angular',
+    'javascript',
+    'typescript',
+    'html',
+    'css',
+    'web',
+    'ui',
+    'ux',
+  ],
+  DevOps: [
+    'devops',
+    'ci-cd',
+    'automation',
+    'infrastructure',
+    'terraform',
+    'ansible',
+    'jenkins',
+    'github-actions',
+    'docker',
+    'kubernetes',
+    'aws',
+    'azure',
+    'gcp',
+  ],
+  Data: [
+    'data',
+    'analytics',
+    'big-data',
+    'data-science',
+    'sql',
+    'python',
+    'r',
+    'pandas',
+    'numpy',
+    'jupyter',
+    'data-visualization',
+  ],
 };
 
 const LANGUAGE_HINTS: Record<string, keyof typeof CATEGORY_MAP> = {
-  'Python': 'AI',
-  'R': 'Data',
-  'Julia': 'AI',
-  'JavaScript': 'Frontend',
-  'TypeScript': 'Frontend',
-  'Java': 'Backend',
+  Python: 'AI',
+  R: 'Data',
+  Julia: 'AI',
+  JavaScript: 'Frontend',
+  TypeScript: 'Frontend',
+  Java: 'Backend',
   'C#': 'Backend',
-  'Go': 'Backend',
-  'Rust': 'Backend',
+  Go: 'Backend',
+  Rust: 'Backend',
   'C++': 'Backend',
-  'PHP': 'Backend',
-  'Ruby': 'Backend',
-  'SQL': 'Data',
-  'Shell': 'DevOps',
-  'Dockerfile': 'DevOps',
-  'HCL': 'DevOps' // Terraform
+  PHP: 'Backend',
+  Ruby: 'Backend',
+  SQL: 'Data',
+  Shell: 'DevOps',
+  Dockerfile: 'DevOps',
+  HCL: 'DevOps', // Terraform
 };
 
 export function computeScore(analysis: UserAnalysis): ScoredUser {
-  const { user, repos } = analysis;
+  const { repos } = analysis;
 
   const scoredRepos: TopRepositorySummary[] = [];
   let totalScore = 0;
@@ -98,7 +162,7 @@ export function computeScore(analysis: UserAnalysis): ScoredUser {
       repo.languages.forEach((l: string) => repoSkills.add(l.toLowerCase()));
       repo.topics.forEach((t: string) => repoSkills.add(t.toLowerCase()));
 
-      repoSkills.forEach(skill => {
+      repoSkills.forEach((skill) => {
         skillCounts[skill] = (skillCounts[skill] || 0) + 1;
       });
     }
@@ -130,11 +194,11 @@ export function computeScore(analysis: UserAnalysis): ScoredUser {
     }
 
     // Apply score to categories
-    if (repoCategories.has("AI")) aiScore += score;
-    if (repoCategories.has("Backend")) backendScore += score;
-    if (repoCategories.has("Frontend")) frontendScore += score;
-    if (repoCategories.has("DevOps")) devopsScore += score;
-    if (repoCategories.has("Data")) dataScore += score;
+    if (repoCategories.has('AI')) aiScore += score;
+    if (repoCategories.has('Backend')) backendScore += score;
+    if (repoCategories.has('Frontend')) frontendScore += score;
+    if (repoCategories.has('DevOps')) devopsScore += score;
+    if (repoCategories.has('Data')) dataScore += score;
 
     scoredRepos.push({
       name: repo.name,
@@ -153,7 +217,7 @@ export function computeScore(analysis: UserAnalysis): ScoredUser {
 
   // Language breakdown from top repos only
   const languageBreakdown: Record<string, number> = {};
-  topRepositories.forEach(repo => {
+  topRepositories.forEach((repo) => {
     if (repo.language) {
       languageBreakdown[repo.language] = (languageBreakdown[repo.language] ?? 0) + 1;
     }
