@@ -26,5 +26,5 @@
     "skipLibCheck": true // Skip type checking of declaration files
   },
   "include": ["src/**/*", "drizzle.config.ts"],
-  "exclude": ["node_modules", "dist", "src/scripts/enrich-linkedin-apify.ts"]
+  "exclude": ["node_modules", "dist"]
 }
