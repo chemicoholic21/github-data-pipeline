@@ -108,6 +108,8 @@ This pipeline:
 | Package Manager | pnpm |
 
 ---
+<img width="718" height="600" alt="image" src="https://github.com/user-attachments/assets/bc9283f9-f8c9-4086-b1e9-55e031378183" />
+
 
 ## Database Schema
 
