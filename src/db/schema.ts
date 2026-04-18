@@ -8,6 +8,8 @@ import {
   jsonb,
   index,
   primaryKey,
+  serial,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
@@ -127,5 +129,81 @@ export const leaderboard = pgTable('leaderboard', {
   isOpenToWork: boolean('is_open_to_work'),
   otwScrapedAt: timestamp('otw_scraped_at'),
   createdAt: timestamp('created_at'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// --- NEW TABLES ALIGNED WITH ACTUAL DB STATE ---
+
+export const githubUsers = pgTable('github_users', {
+  username: text('username').primaryKey(),
+  name: text('name'),
+  avatarUrl: text('avatar_url'),
+  bio: text('bio'),
+  followers: integer('followers').notNull().default(0),
+  following: integer('following').notNull().default(0),
+  publicRepos: integer('public_repos').notNull().default(0),
+  blog: text('blog'),
+  location: text('location'),
+  email: text('email'),
+  twitterUsername: text('twitter_username'),
+  company: text('company'),
+  hireable: boolean('hireable'),
+  createdAt: timestamp('created_at'),
+  scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
+});
+
+export const githubRepos = pgTable('github_repos', {
+  repoName: text('repo_name').primaryKey(), // Real DB PK is ONLY repo_name
+  ownerLogin: text('owner_login').notNull(),
+  description: text('description'),
+  primaryLanguage: text('primary_language'),
+  stars: integer('stars').notNull().default(0),
+  forks: integer('forks').notNull().default(0),
+  watchers: integer('watchers').notNull().default(0),
+  totalPrs: integer('total_prs').notNull().default(0),
+  isFork: boolean('is_fork').notNull().default(false),
+  isArchived: boolean('is_archived').notNull().default(false),
+  topics: text('topics').array(), 
+  createdAt: timestamp('created_at'),
+  pushedAt: timestamp('pushed_at'),
+  scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
+});
+
+export const githubPullRequests = pgTable('github_pull_requests', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull(),
+  repoName: text('repo_name').notNull(),
+  state: text('state').notNull(),
+  additions: integer('additions'),
+  deletions: integer('deletions'),
+  mergedAt: timestamp('merged_at'),
+  createdAt: timestamp('created_at'),
+});
+
+export const userRepoScores = pgTable('user_repo_scores', {
+  id: serial('id').primaryKey(),
+  username: text('username').notNull(),
+  repoName: text('repo_name').notNull(),
+  userPrs: integer('user_prs').notNull().default(0),
+  totalPrs: integer('total_prs').notNull().default(0),
+  stars: integer('stars').notNull().default(0),
+  repoScore: real('repo_score').notNull().default(0),
+  computedAt: timestamp('computed_at').notNull().defaultNow(),
+}, (table) => ({
+  unq: unique('user_repo_scores_username_repo_name_key').on(table.username, table.repoName),
+}));
+
+export const userScores = pgTable('user_scores', {
+  username: text('username').primaryKey(),
+  totalScore: real('total_score').notNull().default(0),
+  aiScore: real('ai_score').notNull().default(0),
+  backendScore: real('backend_score').notNull().default(0),
+  frontendScore: real('frontend_score').notNull().default(0),
+  devopsScore: real('devops_score').notNull().default(0),
+  dataScore: real('data_score').notNull().default(0),
+  contributionCount: integer('contribution_count').notNull().default(0),
+  topReposJson: jsonb('top_repos_json'),
+  languagesJson: jsonb('languages_json'),
+  uniqueSkillsJson: jsonb('unique_skills_json'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

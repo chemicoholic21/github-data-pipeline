@@ -1,10 +1,9 @@
 import { db } from '../db/dbClient.js';
-import { analyses, leaderboard } from '../db/schema.js';
+import { analyses, leaderboard, githubUsers } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { Octokit } from '@octokit/rest';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from '../github/tokenPool.js';
-import { fetchUserAnalysis } from '../lib/github.js';
-import { computeScore } from '../lib/scoring.js';
+import { runPipeline } from '../lib/pipeline.js';
 import { getCachedUser } from '../lib/cache.js';
 
 const CONCURRENCY = 3;
@@ -13,59 +12,6 @@ const BATCH_DELAY_MS = 200;
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function insertUserData(scored: any, username: string) {
-  const analysisData = {
-    id: username.toLowerCase(),
-    username: scored.user?.login || username,
-    totalScore: scored.totalScore || 0,
-    aiScore: scored.aiScore || 0,
-    backendScore: scored.backendScore || 0,
-    frontendScore: scored.frontendScore || 0,
-    devopsScore: scored.devopsScore || 0,
-    dataScore: scored.dataScore || 0,
-    uniqueSkillsJson: scored.uniqueSkills || [],
-    linkedin: scored.user?.linkedin || null,
-    topReposJson: scored.topRepositories || [],
-    languagesJson: scored.languageBreakdown || {},
-    contributionCount: scored.contributionCount || 0,
-    cachedAt: new Date(),
-  };
-
-  const leaderboardData = {
-    username: scored.user?.login || username,
-    name: scored.user?.name || username,
-    avatarUrl: scored.user?.avatarUrl || `https://github.com/${username}.png`,
-    url: scored.user?.url || `https://github.com/${username}`,
-    totalScore: scored.totalScore || 0,
-    aiScore: scored.aiScore || 0,
-    backendScore: scored.backendScore || 0,
-    frontendScore: scored.frontendScore || 0,
-    devopsScore: scored.devopsScore || 0,
-    dataScore: scored.dataScore || 0,
-    uniqueSkillsJson: scored.uniqueSkills || [],
-    company: scored.user?.company || null,
-    blog: scored.user?.websiteUrl || null,
-    location: scored.user?.location || null,
-    email: scored.user?.email || null,
-    bio: scored.user?.bio || null,
-    twitterUsername: scored.user?.twitterUsername || null,
-    linkedin: scored.user?.linkedin || null,
-    hireable: scored.user?.isHireable || false,
-    createdAt: new Date(scored.user?.createdAt || Date.now()),
-    updatedAt: new Date(),
-  };
-
-  await db.insert(analyses).values(analysisData).onConflictDoUpdate({
-    target: analyses.id,
-    set: analysisData,
-  });
-
-  await db.insert(leaderboard).values(leaderboardData).onConflictDoUpdate({
-    target: leaderboard.username,
-    set: leaderboardData,
-  });
 }
 
 async function bulkDiscover(location: string, startRangeIndex: number = 0, startPage: number = 1) {
@@ -126,16 +72,16 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
 
         console.log(`    Processing ${usernames.length} users in range ${range}`);
 
-        // Freshness Check
+        // Freshness Check using new schema
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
         const existingFresh = await db
-          .select({ id: analyses.id })
-          .from(analyses)
+          .select({ username: githubUsers.username })
+          .from(githubUsers)
           .where(
-            sql`${analyses.id} IN ${usernames.map((u) => u.toLowerCase())} AND ${analyses.cachedAt} > ${oneHourAgo}`
+            sql`${githubUsers.username} IN ${usernames} AND ${githubUsers.scrapedAt} > ${oneHourAgo}`
           );
 
-        const freshSet = new Set(existingFresh.map((f) => f.id.toLowerCase()));
+        const freshSet = new Set(existingFresh.map((f) => f.username.toLowerCase()));
 
         for (let i = 0; i < usernames.length; i += CONCURRENCY) {
           const batch = usernames.slice(i, i + CONCURRENCY);
@@ -149,14 +95,9 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
               await Promise.all(
                 todo.map(async (username) => {
                   const cached = await getCachedUser(username);
-                  const rawData = await fetchUserAnalysis(username);
-                  const scored = computeScore(rawData);
-                  await insertUserData(scored, username);
-
+                  await runPipeline(username);
                   const label = cached ? '[CACHED]' : '[ADDED]';
-                  console.log(
-                    `      ${label} ${username} -> Score: ${scored.totalScore.toFixed(1)}`
-                  );
+                  console.log(`      ${label} ${username} -> Refactored Pipeline Run Complete`);
                 })
               );
               batchSuccess = true;

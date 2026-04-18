@@ -1,6 +1,6 @@
 import { gitHubGraphqlClient } from '../github/graphqlClient.js';
 import { getCachedUser, setCachedUser, getOrSetCache, cacheStats } from './cache.js';
-import type { UserAnalysis } from '../types/github.js';
+import type { UserAnalysis, PullRequest } from '../types/github.js';
 import type { User, Repository, LanguageBreakdown } from '../types/github.js';
 
 export type { User, Repository, LanguageBreakdown, UserAnalysis };
@@ -77,6 +77,10 @@ interface UserAnalysisResponse extends RateLimitFragment {
 interface SearchResponse extends RateLimitFragment {
   search: {
     nodes: Array<{
+      id: string;
+      url: string;
+      mergedAt: string;
+      createdAt: string;
       repository: {
         owner: { login: string };
         name: string;
@@ -176,6 +180,10 @@ const SEARCH_MERGED_PRS_QUERY = `
     search(query: $searchQuery, type: ISSUE, first: 100) {
       nodes {
         ... on PullRequest {
+          id
+          url
+          mergedAt
+          createdAt
           repository {
             owner { login }
             name
@@ -266,6 +274,7 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
       }
 
       const repos = Array.from(uniqueReposMap.values());
+      const pullRequests: PullRequest[] = [];
 
       // Search for user's merged PRs in qualifying repos (≥10 stars)
       if (repos.length > 0) {
@@ -286,12 +295,20 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
             cacheTTL: 2592000,
           });
 
-          // Count PRs per repository
+          // Count PRs per repository and collect raw PRs
           const countsByRepo = new Map<string, number>();
           for (const node of searchRes.search.nodes) {
             if (!node.repository) continue;
             const key = `${node.repository.owner.login}/${node.repository.name}`;
             countsByRepo.set(key, (countsByRepo.get(key) ?? 0) + 1);
+            pullRequests.push({
+              id: node.id || node.url,
+              url: node.url,
+              repoId: key,
+              authorLogin: username,
+              mergedAt: node.mergedAt || '',
+              createdAt: node.createdAt,
+            });
           }
 
           // Update repos with user's PR counts
@@ -324,7 +341,7 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
         )
       );
 
-      return {
+      const result = {
         user: {
           login: user.login,
           name: user.name ?? undefined,
@@ -346,62 +363,14 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
           updatedAt: user.updatedAt,
         },
         repos,
+        pullRequests,
         languageBreakdown,
         contributionCount,
         uniqueSkills,
       };
-      await setCachedUser(username, {
-        user: {
-          login: user.login,
-          name: user.name ?? undefined,
-          avatarUrl: user.avatarUrl,
-          url: user.url,
-          company: user.company ?? undefined,
-          blog: user.websiteUrl ?? undefined,
-          location: user.location ?? undefined,
-          email: user.email,
-          bio: user.bio ?? undefined,
-          twitterUsername: user.twitterUsername ?? undefined,
-          linkedin:
-            extractLinkedIn(user.socialAccounts.nodes, user.bio, user.websiteUrl) ?? undefined,
-          isHireable: user.isHireable,
-          websiteUrl: user.websiteUrl ?? undefined,
-          followers: user.followers.totalCount,
-          following: user.following.totalCount,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        },
-        repos,
-        languageBreakdown,
-        contributionCount,
-        uniqueSkills,
-      });
-      return {
-        user: {
-          login: user.login,
-          name: user.name ?? undefined,
-          avatarUrl: user.avatarUrl,
-          url: user.url,
-          company: user.company ?? undefined,
-          blog: user.websiteUrl ?? undefined,
-          location: user.location ?? undefined,
-          email: user.email,
-          bio: user.bio ?? undefined,
-          twitterUsername: user.twitterUsername ?? undefined,
-          linkedin:
-            extractLinkedIn(user.socialAccounts.nodes, user.bio, user.websiteUrl) ?? undefined,
-          isHireable: user.isHireable,
-          websiteUrl: user.websiteUrl ?? undefined,
-          followers: user.followers.totalCount,
-          following: user.following.totalCount,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        },
-        repos,
-        languageBreakdown,
-        contributionCount,
-        uniqueSkills,
-      };
+
+      await setCachedUser(username, result);
+      return result;
     } catch (error: any) {
       if (error.message?.includes('not found') || error.status === 404) {
         throw new Error(`User ${username} not found`);

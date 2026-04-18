@@ -30,6 +30,21 @@ export interface ScoredUser extends UserAnalysis {
 
 const MAX_REPO_SCORE = 10_000;
 
+export function computeRepoScore({
+  user_prs,
+  total_prs,
+  stars,
+}: {
+  user_prs: number;
+  total_prs: number;
+  stars: number | null | undefined;
+}): number {
+  if (!total_prs || total_prs <= 0) return 0;
+  const safeStars = stars ?? 0;
+  const score = safeStars * (user_prs / total_prs);
+  return Math.min(score, MAX_REPO_SCORE);
+}
+
 function scoreRepo(stars: number, userPRs: number, totalPRs: number): number {
   if (stars < 10) return 0;
   if (totalPRs <= 0) return 0;
@@ -46,7 +61,7 @@ export function deriveExperienceLevel(totalScore: number): ExperienceLevel {
 }
 
 // Category mapping for skill categorization
-const CATEGORY_MAP = {
+export const CATEGORY_MAP = {
   AI: [
     'machine-learning',
     'deep-learning',
@@ -118,7 +133,7 @@ const CATEGORY_MAP = {
   ],
 };
 
-const LANGUAGE_HINTS: Record<string, keyof typeof CATEGORY_MAP> = {
+export const LANGUAGE_HINTS: Record<string, keyof typeof CATEGORY_MAP> = {
   Python: 'AI',
   R: 'Data',
   Julia: 'AI',
