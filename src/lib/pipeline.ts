@@ -31,38 +31,45 @@ import {
 export async function scrapeUser(username: string): Promise<void> {
   console.log(`\n[SCRAPE][START] User: ${username}`);
 
-  const user = await fetchGithubUser(username);
-  await upsertGithubUser(user);
-  console.log(`[SCRAPE][USER] ✅ Profile saved`);
+  try {
+    console.log(`[SCRAPE] Fetching user profile...`);
+    const user = await fetchGithubUser(username);
+    await upsertGithubUser(user);
+    console.log(`[SCRAPE][USER] ✅ Profile saved`);
 
-  const repos = await fetchUserRepositories(username);
-  console.log(`[SCRAPE][REPOS] Found ${repos.length} repositories.`);
-  
-  for (const repo of repos) {
-    await upsertGithubRepo(repo);
-  }
-  console.log(`[SCRAPE][REPOS] ✅ Repos processed.`);
-
-  const qualifyingRepos = repos.filter(r => r.stargazerCount >= 10);
-  console.log(`[SCRAPE][PRS] Scanning ${qualifyingRepos.length} repos for PRs...`);
-
-  let totalPrsSaved = 0;
-  for (const repo of qualifyingRepos) {
-    try {
-      const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name);
-      const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
-      
-      if (userPrs.length > 0) {
-        await insertPullRequests(userPrs);
-        totalPrsSaved += userPrs.length;
-        console.log(`  └─ [${repo.ownerLogin}/${repo.name}] Found ${userPrs.length} PRs.`);
-      }
-    } catch (error: any) {
-      console.error(`  └─ [${repo.ownerLogin}/${repo.name}] ❌ Error: ${error.message}`);
+    console.log(`[SCRAPE] Fetching repositories...`);
+    const repos = await fetchUserRepositories(username);
+    console.log(`[SCRAPE][REPOS] Found ${repos.length} repositories.`);
+    
+    for (const repo of repos) {
+      await upsertGithubRepo(repo);
     }
-  }
+    console.log(`[SCRAPE][REPOS] ✅ Repos processed.`);
 
-  console.log(`[SCRAPE][COMPLETE] ✅ Total PRs: ${totalPrsSaved}`);
+    const qualifyingRepos = repos.filter(r => r.stargazerCount >= 10);
+    console.log(`[SCRAPE][PRS] Scanning ${qualifyingRepos.length} repos for PRs...`);
+
+    let totalPrsSaved = 0;
+    for (const repo of qualifyingRepos) {
+      try {
+        const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name);
+        const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
+        
+        if (userPrs.length > 0) {
+          await insertPullRequests(userPrs);
+          totalPrsSaved += userPrs.length;
+          console.log(`  └─ [${repo.ownerLogin}/${repo.name}] Found ${userPrs.length} PRs.`);
+        }
+      } catch (error: any) {
+        console.error(`  └─ [${repo.ownerLogin}/${repo.name}] ❌ Error: ${error.message}`);
+      }
+    }
+
+    console.log(`[SCRAPE][COMPLETE] ✅ Total PRs: ${totalPrsSaved}`);
+  } catch (error: any) {
+    console.error(`[SCRAPE][ERROR] ${error.message}`);
+    throw error;
+  }
 }
 
 /**
@@ -211,7 +218,27 @@ async function syncToLegacyTables(agg: any, username: string) {
 }
 
 export async function runPipeline(username: string) {
-  await scrapeUser(username);
-  await updateUserRepoScores(username);
-  await updateUserScores(username);
+  try {
+    console.log(`\n[PIPELINE] Starting for ${username}...`);
+    
+    console.log(`[PIPELINE] Stage 1: Scraping user data...`);
+    await scrapeUser(username);
+    console.log(`[PIPELINE] Stage 1 ✅ Complete`);
+    
+    console.log(`[PIPELINE] Stage 2: Computing repo scores...`);
+    await updateUserRepoScores(username);
+    console.log(`[PIPELINE] Stage 2 ✅ Complete`);
+    
+    console.log(`[PIPELINE] Stage 3: Aggregating scores...`);
+    await updateUserScores(username);
+    console.log(`[PIPELINE] Stage 3 ✅ Complete`);
+    
+    console.log(`[PIPELINE] ✅ Pipeline complete for ${username}`);
+  } catch (error: any) {
+    console.error(`[PIPELINE] ❌ FAILED for ${username}: ${error.message}`);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    throw error;
+  }
 }

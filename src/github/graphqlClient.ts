@@ -53,6 +53,7 @@ class GitHubGraphqlClient {
 
       const cachedResult = await getCachedApiResponse(cacheKey);
       if (cachedResult) {
+        console.log(`[CACHE_HIT] ${operationName || 'query'}`);
         return cachedResult as T;
       }
     }
@@ -62,6 +63,7 @@ class GitHubGraphqlClient {
     this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
     try {
+      console.log(`[GraphQL] Sending ${operationName || 'query'} request...`);
       const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
         query,
         variables,
@@ -79,7 +81,9 @@ class GitHubGraphqlClient {
         result = response.data.data as T;
       } else {
         if (response.data.errors) {
-          throw new Error('GitHub GraphQL API errors: ' + JSON.stringify(response.data.errors));
+          const errorMsg = JSON.stringify(response.data.errors);
+          console.error(`[GraphQL] API errors: ${errorMsg}`);
+          throw new Error('GitHub GraphQL API errors: ' + errorMsg);
         }
         result = response.data as unknown as T;
       }
@@ -97,14 +101,19 @@ class GitHubGraphqlClient {
 
       return result;
     } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
-        if (
-          error.response.status === 403 &&
-          (error.response.data?.message?.includes('rate limit exceeded') ||
-            error.response.data?.message?.includes('secondary rate limit'))
-        ) {
-          const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
-          await markTokenExhausted(tokenIndex, resetTime);
+      console.error(`[GraphQL] Error: ${error instanceof Error ? error.message : String(error)}`);
+      
+      if (axios.isAxiosError(error)) {
+        console.error(`[GraphQL] Status: ${error.response?.status}`);
+        if (error.response) {
+          if (
+            error.response.status === 403 &&
+            (error.response.data?.message?.includes('rate limit exceeded') ||
+              error.response.data?.message?.includes('secondary rate limit'))
+          ) {
+            const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
+            await markTokenExhausted(tokenIndex, resetTime);
+          }
         }
       }
       throw error;

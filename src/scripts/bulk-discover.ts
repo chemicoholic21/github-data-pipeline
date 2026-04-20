@@ -94,10 +94,15 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
             try {
               await Promise.all(
                 todo.map(async (username) => {
-                  const cached = await getCachedUser(username);
-                  await runPipeline(username);
-                  const label = cached ? '[CACHED]' : '[ADDED]';
-                  console.log(`      ${label} ${username} -> Refactored Pipeline Run Complete`);
+                  try {
+                    const cached = await getCachedUser(username);
+                    await runPipeline(username);
+                    const label = cached ? '[CACHED]' : '[ADDED]';
+                    console.log(`      ${label} ${username} -> Refactored Pipeline Run Complete`);
+                  } catch (userError: any) {
+                    console.error(`      ❌ Error processing ${username}: ${userError.message}`);
+                    throw userError;
+                  }
                 })
               );
               batchSuccess = true;
@@ -110,9 +115,12 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
                 // We just break the batch retry to pick a new token at the top level.
                 break;
               } else {
-                console.log(
-                  `      ⚠️ Batch error for ${todo.join(',')}: ${batchError.message}. Skipping.`
+                console.error(
+                  `      ⚠️ Batch error for ${todo.join(',')}: ${batchError.message}`
                 );
+                if (batchError.stack) {
+                  console.error(batchError.stack);
+                }
                 batchSuccess = true;
               }
             }
@@ -135,6 +143,9 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
           continue;
         } else {
           console.error(`  Range Error:`, e.message);
+          if (e.stack) {
+            console.error(e.stack);
+          }
           hasMore = false;
         }
       }
