@@ -1,9 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-import 'dotenv/config';
-=======
 import { config } from 'dotenv';
->>>>>>> 8d03a364e5123475caf32d399a6498f77acd4189
 import { neon } from '@neondatabase/serverless';
 
 // Load environment variables from .env.local
@@ -466,4 +461,3 @@ async function main() {
 }
 
 main().catch(console.error);
->>>>>>> feat/new-ai-model
