@@ -105,6 +105,11 @@ export async function updateUserRepoScores(username: string) {
 
   const repoStats = await computeUserRepoStats(username);
   
+  if (repoStats.length === 0) {
+    console.log(`[COMPUTE] No PR contributions found for ${username}`);
+    return;
+  }
+
   for (const stats of repoStats) {
     const repoScore = computeRepoScore({
       user_prs: stats.userPrs,
@@ -126,6 +131,8 @@ export async function updateUserRepoScores(username: string) {
       });
     }
   }
+  
+  console.log(`[COMPUTE][COMPLETE] ✅ Processed ${repoStats.length} repos`);
 }
 
 /**
@@ -139,6 +146,11 @@ export async function updateUserScores(username: string) {
     .from(userRepoScores)
     .where(eq(userRepoScores.username, username))
     .orderBy(desc(userRepoScores.repoScore));
+
+  if (repoScores.length === 0) {
+    console.log(`[AGGREGATE] No repo scores found for ${username}, skipping user_scores update`);
+    return;
+  }
 
   let totalScore = 0;
   for (const rs of repoScores) {
@@ -400,6 +412,7 @@ export async function runPipeline(username: string) {
     if (error.stack) {
       console.error(error.stack);
     }
-    throw error;
+    // Don't throw - allow pipeline to continue with other users
+    console.log(`[PIPELINE] Continuing despite error for ${username}`);
   }
 }
