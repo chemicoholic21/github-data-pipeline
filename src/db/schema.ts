@@ -196,14 +196,5 @@ export const userRepoScores = pgTable('user_repo_scores', {
 export const userScores = pgTable('user_scores', {
   username: text('username').primaryKey(),
   totalScore: real('total_score').notNull().default(0),
-  aiScore: real('ai_score').notNull().default(0),
-  backendScore: real('backend_score').notNull().default(0),
-  frontendScore: real('frontend_score').notNull().default(0),
-  devopsScore: real('devops_score').notNull().default(0),
-  dataScore: real('data_score').notNull().default(0),
-  contributionCount: integer('contribution_count').notNull().default(0),
-  topReposJson: jsonb('top_repos_json'),
-  languagesJson: jsonb('languages_json'),
-  uniqueSkillsJson: jsonb('unique_skills_json'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
