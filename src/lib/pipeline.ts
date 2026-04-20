@@ -22,7 +22,6 @@ import {
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { 
-  deriveExperienceLevel, 
   computeRepoScore 
 } from './scoring.js';
 
@@ -143,15 +142,6 @@ export async function updateUserScores(username: string) {
   for (const rs of repoScores) {
     totalScore += rs.repoScore;
   }
-
-  const contributions = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(githubPullRequests)
-    .where(eq(githubPullRequests.username, username));
-  
-  const contributionCount = contributions[0]?.count || 0;
-
-  const experienceLevel = deriveExperienceLevel(totalScore);
 
   const userScoreData = {
     username,
