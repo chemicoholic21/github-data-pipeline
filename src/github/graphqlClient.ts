@@ -85,7 +85,14 @@ class GitHubGraphqlClient {
       }
 
       if (useCache && cacheKey) {
-        await setCachedApiResponse(cacheKey, result, cacheTTL);
+        try {
+          console.log(`[CACHE] Writing to api_cache: ${cacheKey.substring(0, 50)}...`);
+          await setCachedApiResponse(cacheKey, result, cacheTTL);
+          console.log(`[CACHE] ✅ Successfully cached`);
+        } catch (cacheError: any) {
+          console.error(`[CACHE] ❌ Failed to write cache: ${cacheError.message}`);
+          // Don't crash the pipeline, just log the error
+        }
       }
 
       return result;

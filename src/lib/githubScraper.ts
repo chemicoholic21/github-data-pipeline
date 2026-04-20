@@ -241,11 +241,13 @@ const extractLinkedIn = (
  * Fetches a GitHub user profile.
  */
 export async function fetchGithubUser(username: string): Promise<User> {
+  console.log(`[API] Fetching user profile: ${username}`);
   const res = await gitHubGraphqlClient.request<UserResponse>({
     query: GET_USER_QUERY,
     variables: { login: username },
     operationName: 'GetUser',
-    useCache: false, // Per requirements: ONLY fetch data from GitHub
+    useCache: true,
+    cacheTTL: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 
   if (!res.user) {
@@ -278,11 +280,13 @@ export async function fetchGithubUser(username: string): Promise<User> {
  * Fetches repositories a user has contributed to or owns.
  */
 export async function fetchUserRepositories(username: string): Promise<Repository[]> {
+  console.log(`[API] Fetching repositories for: ${username}`);
   const res = await gitHubGraphqlClient.request<UserReposResponse>({
     query: GET_USER_REPOS_QUERY,
     variables: { login: username },
     operationName: 'GetUserRepos',
-    useCache: false,
+    useCache: true,
+    cacheTTL: 30 * 24 * 60 * 60 * 1000,
   });
 
   if (!res.user) {
@@ -320,11 +324,13 @@ export async function fetchUserRepositories(username: string): Promise<Repositor
  * Fetches merged pull requests for a specific repository.
  */
 export async function fetchPullRequestsForRepo(owner: string, repo: string): Promise<PullRequest[]> {
+  console.log(`[API] Fetching PRs for: ${owner}/${repo}`);
   const res = await gitHubGraphqlClient.request<RepoPrsResponse>({
     query: GET_REPO_PRS_QUERY,
     variables: { owner, name: repo },
     operationName: 'GetRepoPrs',
-    useCache: false,
+    useCache: true,
+    cacheTTL: 30 * 24 * 60 * 60 * 1000,
   });
 
   if (!res.repository) {

@@ -26,22 +26,30 @@ export async function setCachedApiResponse(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlMs);
 
-  await db
-    .insert(apiCache)
-    .values({
-      cacheKey,
-      response,
-      cachedAt: now,
-      expiresAt,
-    })
-    .onConflictDoUpdate({
-      target: apiCache.cacheKey,
-      set: {
-        response,
+  try {
+    // Ensure response is JSON-serializable
+    const serialized = JSON.parse(JSON.stringify(response));
+    
+    await db
+      .insert(apiCache)
+      .values({
+        cacheKey,
+        response: serialized,
         cachedAt: now,
         expiresAt,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: apiCache.cacheKey,
+        set: {
+          response: serialized,
+          cachedAt: now,
+          expiresAt,
+        },
+      });
+  } catch (error: any) {
+    console.error(`[CACHE_WRITE] Error caching ${cacheKey}: ${error.message}`);
+    throw error;
+  }
 }
 
 export async function cleanupExpiredApiCache(): Promise<number> {
