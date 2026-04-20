@@ -158,8 +158,24 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
   console.log(`\nMission Complete.`);
 }
 
-const location = process.argv[2] || 'Sydney';
+const locationArg = process.argv[2] || 'Sydney';
 const startIdx = parseInt(process.argv[3] ?? '0', 10);
 const startPage = parseInt(process.argv[4] ?? '1', 10);
 
-bulkDiscover(location, startIdx, startPage).catch(console.error);
+// Split locations by comma and trim whitespace
+const locations = locationArg.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0);
+
+console.log(`\n🌍 Processing ${locations.length} location(s): ${locations.join(', ')}\n`);
+
+// Process each location sequentially
+(async () => {
+  for (let i = 0; i < locations.length; i++) {
+    const location = locations[i];
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📍 Location ${i + 1}/${locations.length}: ${location}`);
+    console.log(`${'='.repeat(60)}\n`);
+    
+    await bulkDiscover(location, startIdx, startPage);
+  }
+  console.log(`\n✅ All ${locations.length} location(s) processed!`);
+})().catch(console.error);
