@@ -10,10 +10,15 @@ A headless TypeScript data pipeline that ingests GitHub user data at scale, scor
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Database Schema](#database-schema)
-  - [users](#users)
-  - [repos](#repos)
+  - [github\_users](#github_users)
+  - [github\_repos](#github_repos)
+  - [github\_pull\_requests](#github_pull_requests)
+  - [user\_repo\_scores](#user_repo_scores)
+  - [user\_scores](#user_scores)
   - [analyses](#analyses)
   - [leaderboard](#leaderboard)
+  - [users (legacy)](#users--legacy)
+  - [repos (legacy)](#repos--legacy)
   - [api\_cache](#api_cache)
   - [token\_rate\_limit](#token_rate_limit)
 - [Scoring System](#scoring-system)
@@ -30,64 +35,72 @@ A headless TypeScript data pipeline that ingests GitHub user data at scale, scor
 
 This pipeline:
 
-1. Discovers GitHub users by location and follower range using the GitHub Search API (`@octokit/rest`)
-2. Fetches deep profile data (repos, languages, topics, merged PRs) via the **GitHub GraphQL API**
-3. Scores each developer across five skill categories: **AI**, **Backend**, **Frontend**, **DevOps**, and **Data**
-4. Persists raw profiles, repository data, scored analyses, and a ranked leaderboard into **PostgreSQL**
-5. Caches all GitHub API responses in the `api_cache` table to avoid redundant requests and rate limit consumption
-6. Manages a pool of multiple GitHub tokens, automatically rotating to the token with the highest remaining quota
+1. **Discovers** GitHub users by location and follower range using the GitHub Search API (`@octokit/rest`)
+2. **Stage 1 (SCRAPE):** Fetches deep profile data (repos, languages, topics, merged PRs) via the **GitHub GraphQL API** and stores in `github_users`, `github_repos`, `github_pull_requests`
+3. **Stage 2 (COMPUTE):** Calculates per-repository scores using the formula `score = stars × (userPRs / totalPRs)` and stores in `user_repo_scores`
+4. **Stage 3 (AGGREGATE):** Sums all repo scores into `user_scores` and syncs to legacy `users` and `leaderboard` tables
+5. **Stage 4 (ANALYZE):** Categorizes repos by topics/languages, computes skill scores across five categories (**AI**, **Backend**, **Frontend**, **DevOps**, **Data**), and stores detailed analysis in `analyses`
+6. **Caches** all GitHub API responses in the `api_cache` table (SHA-256 keyed) to avoid redundant requests and rate limit consumption
+7. **Manages** a pool of multiple GitHub tokens, automatically rotating to the token with the highest remaining quota via `token_rate_limit` table
 
 ---
 
 ## Architecture
 
+The pipeline operates in four stages, processing users discovered via GitHub Search API:
+
 ```
-                         ┌──────────────────────┐
-                         │   bulk-discover.ts   │  ← Entry point (CLI script)
-                         │  location + follower │
-                         │  range search loop   │
-                         └──────────┬───────────┘
-                                    │  GitHub Search API (Octokit REST)
-                                    │  100 users/page, paginated
-                                    ▼
-                         ┌──────────────────────┐
-                         │    Token Pool        │  ← Selects best token by remaining quota
-                         │  (tokenPool.ts)      │  ← Tracks limits in `token_rate_limit` table
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │  GitHubGraphqlClient │  ← SHA-256 keyed cache lookup first
-                         │  (graphqlClient.ts)  │  ← Hits `api_cache` before real API call
-                         └──────────┬───────────┘
-                                    │  GitHub GraphQL API
-                                    │  (repos, languages, topics, merged PRs)
-                                    ▼
-                         ┌──────────────────────┐
-                         │   fetchUserAnalysis  │  ← Assembles UserAnalysis object
-                         │   (github.ts)        │  ← Deduplicates owned + contributed repos
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │   computeScore       │  ← score = stars × (userPRs / totalPRs)
-                         │   (scoring.ts)       │  ← Categorises by language/topic keywords
-                         └──────────┬───────────┘
-                                    │
-                          ┌─────────┴──────────┐
-                          ▼                    ▼
-               ┌────────────────┐   ┌────────────────────┐
-               │  `analyses`    │   │   `leaderboard`    │
-               │  (full scores) │   │  (display-ready)   │
-               └────────────────┘   └────────────────────┘
-                          │
-               ┌──────────┴──────────┐
-               ▼                     ▼
-         ┌──────────┐         ┌──────────┐
-         │  `users` │         │  `repos` │
-         │ (profile)│         │ (per-user│
-         └──────────┘         │   repos) │
-                              └──────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        bulk-discover.ts                             │
+│  Entry point: location + follower range search (100 users/page)    │
+│  Uses Token Pool to rotate between GitHub PATs                     │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 1: SCRAPE (githubScraper.ts)                                │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ fetchGithubUser() → github_users                             │  │
+│  │ fetchUserRepositories() → github_repos                       │  │
+│  │ fetchPullRequestsForRepo() → github_pull_requests            │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  Uses: GitHub GraphQL API + api_cache (SHA-256 keyed)             │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 2: COMPUTE (pipeline.ts)                                    │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ computeUserRepoStats() - Joins PRs with repos                │  │
+│  │ computeRepoScore() - score = stars × (userPRs / totalPRs)   │  │
+│  │ → user_repo_scores (per-repo scores)                         │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 3: AGGREGATE (pipeline.ts)                                  │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ Sum all repo scores → user_scores                            │  │
+│  │ Sync to legacy tables → users, leaderboard                   │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 4: ANALYZE (pipeline.ts)                                    │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ Categorize repos by topics/languages                         │  │
+│  │ Compute AI, Backend, Frontend, DevOps, Data scores          │  │
+│  │ Extract top skills, languages, repos → analyses              │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+
+SUPPORTING INFRASTRUCTURE:
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│   api_cache      │  │ token_rate_limit │  │ Legacy: users,   │
+│ (GraphQL cache)  │  │  (token pool)    │  │ repos (synced)   │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
 ```
 
 ---
@@ -113,11 +126,125 @@ This pipeline:
 
 ## Database Schema
 
-The schema is defined in `src/db/schema.ts` using Drizzle ORM and mirrored as raw SQL in `schema.sql`. There are six tables.
+The schema is defined in `src/db/schema.ts` using Drizzle ORM and mirrored as raw SQL in `schema.sql`. There are eleven tables organized into two groups:
+
+**Primary Tables (New Pipeline):**
+- `github_users` - User profiles
+- `github_repos` - Repository data
+- `github_pull_requests` - Individual PRs
+- `user_repo_scores` - Per-repo scores
+- `user_scores` - Aggregated scores
+- `analyses` - Skill categorization
+- `leaderboard` - Display-ready rankings
+
+**Legacy Tables (Maintained for Compatibility):**
+- `users` - Old user profile table
+- `repos` - Old repository table
+
+**Infrastructure Tables:**
+- `api_cache` - API response cache
+- `token_rate_limit` - Token pool state
 
 ---
 
-### `users`
+### `github_users`
+
+**Primary user profile table.** Stores GitHub user data scraped in Stage 1 of the pipeline. This is the source of truth for user profiles in the new architecture.
+
+| Column | Type | Notes |
+|---|---|---|
+| `username` | `TEXT` **PK** | GitHub login |
+| `name` | `TEXT` | Display name |
+| `avatar_url` | `TEXT` | Profile picture URL |
+| `bio` | `TEXT` | GitHub bio |
+| `followers` | `INTEGER NOT NULL DEFAULT 0` | Follower count |
+| `following` | `INTEGER NOT NULL DEFAULT 0` | Following count |
+| `public_repos` | `INTEGER NOT NULL DEFAULT 0` | Number of public repos |
+| `blog` | `TEXT` | Website / blog URL |
+| `location` | `TEXT` | Location string |
+| `email` | `TEXT` | Public email |
+| `twitter_username` | `TEXT` | Twitter handle |
+| `company` | `TEXT` | Company field |
+| `hireable` | `BOOLEAN` | GitHub "available for hire" flag |
+| `created_at` | `TIMESTAMP` | GitHub account creation date |
+| `scraped_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When this row was last scraped |
+
+---
+
+### `github_repos`
+
+**Primary repository table.** Stores repository data scraped from GitHub in Stage 1. Note: Primary key is just `repo_name`, not the full `owner/repo` format.
+
+| Column | Type | Notes |
+|---|---|---|
+| `repo_name` | `TEXT` **PK** | Repository name (just name, not owner/name) |
+| `owner_login` | `TEXT NOT NULL` | Repository owner username |
+| `description` | `TEXT` | Repository description |
+| `primary_language` | `TEXT` | Primary programming language |
+| `stars` | `INTEGER NOT NULL DEFAULT 0` | Stargazer count |
+| `forks` | `INTEGER NOT NULL DEFAULT 0` | Fork count |
+| `watchers` | `INTEGER NOT NULL DEFAULT 0` | Watcher count |
+| `total_prs` | `INTEGER NOT NULL DEFAULT 0` | Total merged PRs in repo |
+| `is_fork` | `BOOLEAN NOT NULL DEFAULT false` | Whether this is a fork |
+| `is_archived` | `BOOLEAN NOT NULL DEFAULT false` | Whether repo is archived |
+| `topics` | `TEXT[]` | Array of topic strings |
+| `created_at` | `TIMESTAMP` | Repository creation date |
+| `pushed_at` | `TIMESTAMP` | Last push date |
+| `scraped_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When this row was scraped |
+
+---
+
+### `github_pull_requests`
+
+**Pull request tracking table.** Stores individual PRs authored by users across repositories. Populated in Stage 1 for repos with 10+ stars.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `TEXT` **PK** | Pull request ID |
+| `username` | `TEXT NOT NULL` | PR author username |
+| `repo_name` | `TEXT NOT NULL` | Full repository name (owner/repo) |
+| `state` | `TEXT NOT NULL` | PR state (e.g., MERGED) |
+| `additions` | `INTEGER` | Lines added |
+| `deletions` | `INTEGER` | Lines deleted |
+| `merged_at` | `TIMESTAMP` | When PR was merged |
+| `created_at` | `TIMESTAMP` | When PR was created |
+
+---
+
+### `user_repo_scores`
+
+**Per-repository score table.** Stores computed scores for each user-repo combination. Populated in Stage 2 (COMPUTE) of the pipeline using the formula: `score = stars × (userPRs / totalPRs)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `SERIAL` **PK** | Auto-incrementing ID |
+| `username` | `TEXT NOT NULL` | GitHub username |
+| `repo_name` | `TEXT NOT NULL` | Repository name |
+| `user_prs` | `INTEGER NOT NULL DEFAULT 0` | PRs by this user in this repo |
+| `total_prs` | `INTEGER NOT NULL DEFAULT 0` | Total PRs in this repo |
+| `stars` | `INTEGER NOT NULL DEFAULT 0` | Stars on this repo |
+| `repo_score` | `REAL NOT NULL DEFAULT 0` | Computed score for this repo |
+| `computed_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When score was computed |
+
+**Unique constraint:** `(username, repo_name)`
+
+---
+
+### `user_scores`
+
+**Aggregated score table.** Stores the total score per user (sum of all repo scores). Populated in Stage 3 (AGGREGATE) of the pipeline.
+
+| Column | Type | Notes |
+|---|---|---|
+| `username` | `TEXT` **PK** | GitHub username |
+| `total_score` | `REAL NOT NULL DEFAULT 0` | Sum of all repo scores |
+| `updated_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When score was last updated |
+
+---
+
+### `users` ⚠️ LEGACY
+
+**Legacy user profile table.** Maintained for backward compatibility. Still synced via `syncToLegacyTables()` in Stage 3 of the pipeline, but `github_users` is the primary source of truth.
 
 Caches the raw GitHub profile for each discovered developer. Acts as the persistent layer backing the in-memory user cache. Rows are refreshed after 30 days.
 
@@ -148,7 +275,9 @@ Caches the raw GitHub profile for each discovered developer. Acts as the persist
 
 ---
 
-### `repos`
+### `repos` ⚠️ LEGACY
+
+**Legacy repository table.** No longer actively used in the new pipeline. Replaced by `github_repos`. Maintained for backward compatibility only.
 
 Stores every repository associated with a user — both owned repos and repos the user has contributed to via merged PRs. Rows are deleted and re-inserted on each user refresh.
 
@@ -158,17 +287,17 @@ Stores every repository associated with a user — both owned repos and repos th
 | `username` | `TEXT` **NOT NULL** | Owning user (FK to `users.username`) |
 | `repo_name` | `TEXT` **NOT NULL** | Short repo name |
 | `full_name` | `TEXT` **NOT NULL** | `owner/repo` |
-| `stars` | `INTEGER` | Stargazer count |
-| `forks` | `INTEGER` | Fork count |
+| `stars` | `INTEGER NOT NULL DEFAULT 0` | Stargazer count |
+| `forks` | `INTEGER NOT NULL DEFAULT 0` | Fork count |
 | `language` | `TEXT` | Primary language |
 | `description` | `TEXT` | Repo description |
 | `url` | `TEXT` | GitHub URL |
 | `pushed_at` | `TIMESTAMP` | Last push date |
-| `is_fork` | `BOOLEAN` | Whether this is a fork |
+| `is_fork` | `BOOLEAN NOT NULL DEFAULT false` | Whether this is a fork |
 | `topics` | `JSONB` | Array of topic strings |
 | `languages` | `JSONB` | Array of all detected language names |
-| `merged_pr_count` | `INTEGER` | Total merged PRs in this repo |
-| `merged_prs_by_user_count` | `INTEGER` | Merged PRs authored by this user |
+| `merged_pr_count` | `INTEGER NOT NULL DEFAULT 0` | Total merged PRs in this repo |
+| `merged_prs_by_user_count` | `INTEGER NOT NULL DEFAULT 0` | Merged PRs authored by this user |
 
 **Indexes:** `idx_repos_username`, `idx_repos_stars`, `idx_repos_full_name`
 
@@ -176,43 +305,42 @@ Stores every repository associated with a user — both owned repos and repos th
 
 ### `analyses`
 
-Stores the computed score breakdown per user. One row per user, upserted on each pipeline run.
+**Skill categorization table.** Stores the computed score breakdown per user across five skill categories. Populated in Stage 4 (ANALYZE) of the pipeline. One row per user, upserted on each pipeline run.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `TEXT` **PK** | Lowercased username |
 | `username` | `TEXT` **NOT NULL** | GitHub login |
-| `total_score` | `REAL` | Sum of all repo scores |
-| `ai_score` | `REAL` | Score from AI/ML repos |
-| `backend_score` | `REAL` | Score from backend repos |
-| `frontend_score` | `REAL` | Score from frontend repos |
-| `devops_score` | `REAL` | Score from DevOps repos |
-| `data_score` | `REAL` | Score from data/analytics repos |
+| `total_score` | `REAL NOT NULL DEFAULT 0` | Sum of all category scores |
+| `ai_score` | `REAL NOT NULL DEFAULT 0` | Score from AI/ML repos |
+| `backend_score` | `REAL NOT NULL DEFAULT 0` | Score from backend repos |
+| `frontend_score` | `REAL NOT NULL DEFAULT 0` | Score from frontend repos |
+| `devops_score` | `REAL NOT NULL DEFAULT 0` | Score from DevOps repos |
+| `data_score` | `REAL NOT NULL DEFAULT 0` | Score from data/analytics repos |
 | `unique_skills_json` | `JSONB` | Top-10 skill strings by frequency |
 | `linkedin` | `TEXT` | LinkedIn URL if found |
-| `top_repos_json` | `JSONB` | Array of `TopRepositorySummary` objects |
+| `top_repos_json` | `JSONB` | Array of top 5 repos with scores and categories |
 | `languages_json` | `JSONB` | Language → count breakdown map |
-| `contribution_count` | `INTEGER` | Total merged PRs by this user across all repos |
-| `cached_at` | `TIMESTAMP` | When this analysis was computed |
+| `contribution_count` | `INTEGER NOT NULL DEFAULT 0` | Total merged PRs by this user across all repos |
+| `cached_at` | `TIMESTAMP NOT NULL DEFAULT NOW()` | When this analysis was computed |
 
 ---
 
 ### `leaderboard`
 
-A denormalised, display-ready table for ranking developers. Contains all profile fields needed for a leaderboard UI without additional joins.
+**Display-ready rankings table.** A denormalised table for ranking developers. Synced from `user_scores` and `github_users` in Stage 3 (AGGREGATE). Contains all profile fields needed for a leaderboard UI without additional joins.
 
 | Column | Type | Notes |
 |---|---|---|
 | `username` | `TEXT` **PK** | GitHub login |
 | `name` | `TEXT` | Display name |
 | `avatar_url` | `TEXT` | Profile picture URL |
-| `url` | `TEXT` | GitHub profile URL |
-| `total_score` | `REAL` | Overall contribution score |
-| `ai_score` | `REAL` | AI/ML category score |
-| `backend_score` | `REAL` | Backend category score |
-| `frontend_score` | `REAL` | Frontend category score |
-| `devops_score` | `REAL` | DevOps category score |
-| `data_score` | `REAL` | Data category score |
+| `total_score` | `REAL NOT NULL DEFAULT 0` | Overall contribution score |
+| `ai_score` | `REAL NOT NULL DEFAULT 0` | AI/ML category score |
+| `backend_score` | `REAL NOT NULL DEFAULT 0` | Backend category score |
+| `frontend_score` | `REAL NOT NULL DEFAULT 0` | Frontend category score |
+| `devops_score` | `REAL NOT NULL DEFAULT 0` | DevOps category score |
+| `data_score` | `REAL NOT NULL DEFAULT 0` | Data category score |
 | `unique_skills_json` | `JSONB` | Top skills array |
 | `company` | `TEXT` | Company |
 | `blog` | `TEXT` | Blog / website |
@@ -221,7 +349,7 @@ A denormalised, display-ready table for ranking developers. Contains all profile
 | `bio` | `TEXT` | Bio |
 | `twitter_username` | `TEXT` | Twitter handle |
 | `linkedin` | `TEXT` | LinkedIn URL |
-| `hireable` | `BOOLEAN` | Open to work (GitHub flag) |
+| `hireable` | `BOOLEAN NOT NULL DEFAULT false` | Open to work (GitHub flag) |
 | `is_open_to_work` | `BOOLEAN` | Open to work (scraped) |
 | `otw_scraped_at` | `TIMESTAMP` | When `is_open_to_work` was last scraped |
 | `created_at` | `TIMESTAMP` | GitHub account creation date |
@@ -246,13 +374,13 @@ Caches raw GitHub GraphQL API responses. Cache keys are SHA-256 hashes of the qu
 
 ### `token_rate_limit`
 
-Tracks the GitHub API rate limit state for each token in the pool. The token pool reads this table to select the token with the most remaining quota before every API call.
+**Token pool state table.** Tracks the GitHub API rate limit state for each token in the pool. The token pool reads this table to select the token with the most remaining quota before every API call.
 
 | Column | Type | Notes |
 |---|---|---|
 | `token_index` | `INTEGER` **PK** | 0-based index into the tokens array |
-| `remaining` | `INTEGER` | Requests remaining in current window |
-| `reset_time` | `INTEGER` | Unix timestamp when the window resets |
+| `remaining` | `INTEGER NOT NULL DEFAULT 5000` | Requests remaining in current window |
+| `reset_time` | `INTEGER NOT NULL DEFAULT 0` | Unix timestamp when the window resets |
 | `last_updated` | `TIMESTAMP` **NOT NULL** | When this row was last written |
 
 ---
