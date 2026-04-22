@@ -38,8 +38,8 @@ const CONFIG = {
   apifyApiToken: process.env.APIFY_API_TOKEN ?? '',
 
   // Scraping settings
-  skipCount: 250,        // Skip top N profiles
-  fetchCount: 5,         // Fetch next N profiles (251-255)
+  skipCount: 264,        // Skip top N profiles
+  fetchCount: 995,       // Fetch next N profiles with LinkedIn
   requestDelayMs: 4000,  // Delay between requests to avoid rate limiting
   maxRetries: 2,         // Number of retries for failed requests
   initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
