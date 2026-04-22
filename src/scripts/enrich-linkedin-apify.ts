@@ -7,11 +7,15 @@
  * ranked by their contribution score (score = stars × (user_prs / total_prs)).
  *
  * This script:
- * 1. Fetches users from the leaderboard table ranked by total_score
- * 2. Skips the top 250 profiles
- * 3. Processes profiles ranked 251-255
- * 4. Uses Apify API to check Open-to-Work status
- * 5. Updates the leaderboard table with results
+ * 1. Ranks ALL users by total_score (regardless of LinkedIn)
+ * 2. Skips the top 250 ranked profiles
+ * 3. From rank 251 onwards, finds users who HAVE LinkedIn URLs
+ * 4. Processes the first 5 users with LinkedIn URLs
+ * 5. Uses Apify API to check Open-to-Work status
+ * 6. Updates the leaderboard table with results
+ *
+ * Example: If ranks 251-290 have LinkedIn at positions 254, 261, 274, 275, 279, 281, 287
+ *          Then only 254, 261, 274, 275, 279 will be scraped (first 5 with LinkedIn)
  *
  * Configuration:
  * - APIFY_API_TOKEN: Apify API token
@@ -154,26 +158,38 @@ const db = {
   },
 
   /**
-   * Fetch users ranked by total_score, with pagination
+   * Fetch users with LinkedIn URLs, ranked by total_score among ALL users
+   *
+   * Logic:
+   * 1. Rank ALL users by score (not just those with LinkedIn)
+   * 2. Skip top N ranked users
+   * 3. From remaining, get first M users who HAVE LinkedIn URLs
+   *
+   * Example: If ranks 251-290 have LinkedIn at 254, 261, 274, 275, 279, 281, 287
+   *          This returns users at ranks 254, 261, 274, 275, 279 (first 5 with LinkedIn)
    *
    * Score formula: score = stars × (user_prs / total_prs)
-   * This is pre-computed and stored in total_score column.
    */
   async fetchRankedUsers(offset: number, limit: number): Promise<LeaderboardUser[]> {
-    console.log(`📊 Fetching users ranked ${offset + 1} to ${offset + limit}...`);
+    console.log(`📊 Fetching first ${limit} users with LinkedIn after rank ${offset}...`);
     console.log(`   Formula: score = stars × (user_prs / total_prs)`);
 
     const users = await sql`
-      SELECT
-        username,
-        name,
-        linkedin,
-        total_score,
-        ROW_NUMBER() OVER (ORDER BY total_score DESC) as rank
-      FROM leaderboard
-      WHERE linkedin IS NOT NULL AND linkedin != ''
-      ORDER BY total_score DESC
-      OFFSET ${offset}
+      WITH ranked_users AS (
+        SELECT
+          username,
+          name,
+          linkedin,
+          total_score,
+          ROW_NUMBER() OVER (ORDER BY total_score DESC) as rank
+        FROM leaderboard
+      )
+      SELECT username, name, linkedin, total_score, rank
+      FROM ranked_users
+      WHERE rank > ${offset}
+        AND linkedin IS NOT NULL
+        AND linkedin != ''
+      ORDER BY rank ASC
       LIMIT ${limit}
     ` as unknown as LeaderboardUser[];
 
@@ -203,9 +219,9 @@ const logger = {
     console.log('═'.repeat(60));
     console.log('LinkedIn Open-to-Work Status Enrichment (Apify)');
     console.log('═'.repeat(60));
-    console.log(`Skip count:    ${CONFIG.skipCount} (top profiles to skip)`);
-    console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles to process)`);
-    console.log(`Target range:  Rank ${CONFIG.skipCount + 1} to ${CONFIG.skipCount + CONFIG.fetchCount}`);
+    console.log(`Skip count:    ${CONFIG.skipCount} (top ranked profiles to skip)`);
+    console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles with LinkedIn to process)`);
+    console.log(`Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`);
     console.log(`Request delay: ${CONFIG.requestDelayMs}ms`);
     console.log('═'.repeat(60) + '\n');
   },
@@ -291,7 +307,7 @@ async function main(): Promise<void> {
     stats.total++;
 
     logger.userProgress(
-      CONFIG.skipCount + i + 1,  // Actual rank
+      user.rank,  // Actual rank from query
       user.username,
       user.total_score,
       users.length,
