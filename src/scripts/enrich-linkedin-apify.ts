@@ -40,7 +40,9 @@ const CONFIG = {
   // Scraping settings
   skipCount: 250,        // Skip top N profiles
   fetchCount: 5,         // Fetch next N profiles (251-255)
-  requestDelayMs: 2000,  // Delay between requests to avoid rate limiting
+  requestDelayMs: 4000,  // Delay between requests to avoid rate limiting
+  maxRetries: 2,         // Number of retries for failed requests
+  initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
 };
 
 // Initialize database connection
@@ -68,9 +70,9 @@ export interface OpenToWorkResult {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Check if a LinkedIn profile is "Open to Work" using Apify API
+ * Check if a LinkedIn profile is "Open to Work" using Apify API (single attempt)
  */
-export async function checkOpenToWork(
+async function checkOpenToWorkOnce(
   linkedinUrl: string,
   apiToken: string
 ): Promise<OpenToWorkResult> {
@@ -101,6 +103,16 @@ export async function checkOpenToWork(
     // Apify returns an array of results
     if (Array.isArray(data) && data.length > 0) {
       const result = data[0];
+
+      // Check for timeout error in response
+      if (result.messages && result.messages.includes('timed out')) {
+        return {
+          success: false,
+          openToWork: null,
+          error: 'API timeout',
+        };
+      }
+
       // Handle different response formats
       if (result.data && typeof result.data.open_to_work === "boolean") {
         return {
@@ -136,6 +148,51 @@ export async function checkOpenToWork(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Check if a LinkedIn profile is "Open to Work" using Apify API
+ * With retry logic and exponential backoff
+ */
+export async function checkOpenToWork(
+  linkedinUrl: string,
+  apiToken: string
+): Promise<OpenToWorkResult> {
+  let lastResult: OpenToWorkResult = { success: false, openToWork: null, error: 'Unknown error' };
+
+  for (let attempt = 0; attempt <= CONFIG.maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = CONFIG.initialRetryDelayMs * Math.pow(2, attempt - 1);
+      console.log(`   🔄 Retry ${attempt}/${CONFIG.maxRetries} after ${delayMs / 1000}s delay...`);
+      await sleep(delayMs);
+    }
+
+    lastResult = await checkOpenToWorkOnce(linkedinUrl, apiToken);
+
+    // If successful, return immediately
+    if (lastResult.success) {
+      return lastResult;
+    }
+
+    // If it's a timeout or transient error, retry
+    const isRetryable = lastResult.error?.includes('timeout') ||
+                        lastResult.error?.includes('timed out') ||
+                        lastResult.error?.includes('ETIMEDOUT') ||
+                        lastResult.error?.includes('ECONNRESET');
+
+    if (!isRetryable) {
+      // Non-retryable error, return immediately
+      return lastResult;
+    }
+
+    // Log retry attempt
+    if (attempt < CONFIG.maxRetries) {
+      console.log(`   ⚠ ${lastResult.error} - will retry...`);
+    }
+  }
+
+  // All retries exhausted
+  return lastResult;
 }
 
 // ============================================================================
@@ -223,6 +280,7 @@ const logger = {
     console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles with LinkedIn to process)`);
     console.log(`Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`);
     console.log(`Request delay: ${CONFIG.requestDelayMs}ms`);
+    console.log(`Max retries:   ${CONFIG.maxRetries} (with exponential backoff)`);
     console.log('═'.repeat(60) + '\n');
   },
 
