@@ -10,20 +10,16 @@
  * 1. Fetches users from the leaderboard table ranked by total_score
  * 2. Skips the top 250 profiles
  * 3. Processes profiles ranked 251-255
- * 4. Uses LinkedIn session cookies to check Open-to-Work status
+ * 4. Uses Apify API to check Open-to-Work status
  * 5. Updates the leaderboard table with results
  *
  * Configuration:
- * - LINKEDIN_LI_AT: LinkedIn session cookie
- * - LINKEDIN_JSESSIONID: LinkedIn CSRF token
+ * - APIFY_API_TOKEN: Apify API token
  * - DATABASE_URL: PostgreSQL connection string
  */
 
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
-import * as https from 'https';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -34,15 +30,13 @@ const CONFIG = {
   // Database
   databaseUrl: process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL not set'); })(),
 
-  // LinkedIn credentials
-  linkedinLiAt: process.env.LINKEDIN_LI_AT ?? '',
-  linkedinJsessionId: process.env.LINKEDIN_JSESSIONID ?? '',
+  // Apify API
+  apifyApiToken: process.env.APIFY_API_TOKEN ?? '',
 
   // Scraping settings
   skipCount: 250,        // Skip top N profiles
   fetchCount: 5,         // Fetch next N profiles (251-255)
   requestDelayMs: 2000,  // Delay between requests to avoid rate limiting
-  requestTimeoutMs: 30000,
 };
 
 // Initialize database connection
@@ -57,235 +51,85 @@ interface LeaderboardUser {
   rank: number;
 }
 
-interface OpenToWorkResult {
-  isOpenToWork: boolean | null;
-  preferences: Record<string, string>;
-  profileName: string | null;
+export interface OpenToWorkResult {
+  success: boolean;
+  openToWork: boolean | null;
   error?: string;
 }
 
 // ============================================================================
-// LinkedIn Scraper (based on jamesmurdza/linkedin-opentowork-scraper)
+// Apify API Client
 // ============================================================================
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Makes an HTTPS request and returns a promise
+ * Check if a LinkedIn profile is "Open to Work" using Apify API
  */
-function httpsRequest(options: https.RequestOptions, timeout: number = CONFIG.requestTimeoutMs): Promise<{ statusCode: number; data: string }> {
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        resolve({ statusCode: res.statusCode ?? 0, data });
-      });
-    });
-
-    req.setTimeout(timeout, () => {
-      req.destroy();
-      reject(new Error('Request timed out'));
-    });
-
-    req.on('error', (e) => reject(new Error(`Request failed: ${e.message}`)));
-    req.end();
-  });
-}
-
-/**
- * Safely parse JSON without throwing
- */
-function safeJsonParse(str: string): { success: boolean; data: any; error: string | null } {
-  try {
-    return { success: true, data: JSON.parse(str), error: null };
-  } catch (e: any) {
-    return { success: false, data: null, error: e.message };
-  }
-}
-
-/**
- * Safely access nested object properties
- */
-function safeGet(obj: any, path: string, defaultValue: any = null): any {
-  try {
-    const keys = path.split('.');
-    let result = obj;
-    for (const key of keys) {
-      if (result === null || result === undefined) return defaultValue;
-      result = result[key];
-    }
-    return result !== undefined && result !== null ? result : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
-
-/**
- * Extract public identifier from LinkedIn URL
- */
-function extractPublicIdentifier(input: string): string {
-  if (!input || typeof input !== 'string') return '';
-
-  let cleaned = input.trim().replace(/\/+$/, '');
-
-  // Handle full URLs
-  const urlMatch = cleaned.match(/linkedin\.com\/in\/([^\/\?#]+)/i);
-  if (urlMatch) return urlMatch[1];
-
-  // Return as-is (could be username or URN)
-  return cleaned;
-}
-
-/**
- * Check if input looks like a profile URN
- */
-function isProfileUrn(input: string): boolean {
-  return /^ACo[A-Za-z0-9_-]+$/.test(input);
-}
-
-/**
- * Fetch profile URN from public identifier
- */
-async function fetchProfileUrn(publicIdentifier: string): Promise<string> {
-  const apiPath = `/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${encodeURIComponent(publicIdentifier)}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.WebTopCardCore-6`;
-
-  const options: https.RequestOptions = {
-    hostname: 'www.linkedin.com',
-    port: 443,
-    path: apiPath,
-    method: 'GET',
-    headers: {
-      'cookie': `li_at=${CONFIG.linkedinLiAt}; JSESSIONID="${CONFIG.linkedinJsessionId}"`,
-      'csrf-token': CONFIG.linkedinJsessionId,
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-  };
-
-  const { statusCode, data } = await httpsRequest(options);
-
-  if (statusCode === 404) throw new Error(`Profile not found: ${publicIdentifier}`);
-  if (statusCode === 401 || statusCode === 403) throw new Error('Authentication failed. Check LinkedIn cookies.');
-  if (statusCode !== 200) throw new Error(`Failed to fetch profile: HTTP ${statusCode}`);
-
-  const parsed = safeJsonParse(data);
-  if (!parsed.success) throw new Error(`Failed to parse response: ${parsed.error}`);
-
-  const elements = safeGet(parsed.data, 'elements', []);
-  if (!Array.isArray(elements) || elements.length === 0) {
-    throw new Error('Could not find profile in response');
-  }
-
-  const entityUrn = safeGet(elements[0], 'entityUrn', '');
-  const match = entityUrn.match(/urn:li:fsd_profile:([A-Za-z0-9_-]+)/);
-  if (match) return match[1];
-
-  throw new Error('Could not find profile URN in response');
-}
-
-/**
- * Fetch Open-to-Work preferences for a profile URN
- */
-async function fetchOpenToWorkPreferences(profileUrn: string): Promise<any> {
-  const encodedUrn = encodeURIComponent(`urn:li:fsd_profile:${profileUrn}`);
-  const apiPath = `/voyager/api/graphql?variables=(profileUrn:${encodedUrn})&queryId=voyagerJobsDashOpenToWorkPreferencesView.6bd7edaa7eeef51da63701e6795d5a51`;
-
-  const options: https.RequestOptions = {
-    hostname: 'www.linkedin.com',
-    port: 443,
-    path: apiPath,
-    method: 'GET',
-    headers: {
-      'cookie': `li_at=${CONFIG.linkedinLiAt}; JSESSIONID="${CONFIG.linkedinJsessionId}"`,
-      'csrf-token': CONFIG.linkedinJsessionId,
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-  };
-
-  const { statusCode, data } = await httpsRequest(options);
-
-  if (statusCode === 401 || statusCode === 403) throw new Error('Authentication failed. Check LinkedIn cookies.');
-  if (statusCode !== 200) throw new Error(`HTTP ${statusCode}: Failed to fetch Open To Work preferences`);
-
-  const parsed = safeJsonParse(data);
-  if (!parsed.success) throw new Error(`Failed to parse JSON: ${parsed.error}`);
-
-  return parsed.data;
-}
-
-/**
- * Extract Open-to-Work data from API response
- */
-function extractOpenToWorkData(rawData: any, inputIdentifier: string = ''): OpenToWorkResult {
-  if (!rawData) {
-    return { isOpenToWork: null, preferences: {}, profileName: null, error: 'No data received' };
-  }
-
-  const elements = safeGet(rawData, 'data.jobsDashOpenToWorkPreferencesViewByProfile.elements', []);
-
-  if (!Array.isArray(elements) || elements.length === 0) {
-    return { isOpenToWork: false, preferences: {}, profileName: null };
-  }
-
-  const element = elements[0] || {};
-  const vieweeProfile = safeGet(element, 'vieweeProfile', {});
-  const sections = safeGet(element, 'sections', []);
-
-  // Extract preferences
-  const preferences: Record<string, string> = {};
-  if (Array.isArray(sections)) {
-    sections.forEach((section: any) => {
-      const name = safeGet(section, 'preferenceName', '');
-      const answer = safeGet(section, 'answer', '');
-      if (name && answer) preferences[name] = answer;
-    });
-  }
-
-  // Extract profile data
-  const firstName = safeGet(vieweeProfile, 'firstName', '');
-  const lastName = safeGet(vieweeProfile, 'lastName', '');
-  const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
-
-  // Determine Open-to-Work status
-  const frameType = safeGet(vieweeProfile, 'profilePicture.frameType', '');
-  const preferencesType = safeGet(element, 'preferencesType', '');
-  const isOpenToWork = frameType === 'OPEN_TO_WORK' || preferencesType === 'OPEN_TO_WORK';
-
-  return {
-    isOpenToWork,
-    preferences,
-    profileName: fullName,
-  };
-}
-
-/**
- * Check Open-to-Work status for a LinkedIn profile
- */
-async function checkOpenToWork(linkedinUrl: string): Promise<OpenToWorkResult> {
-  const publicIdentifier = extractPublicIdentifier(linkedinUrl);
-
-  if (!publicIdentifier) {
-    return { isOpenToWork: null, preferences: {}, profileName: null, error: 'Invalid LinkedIn URL' };
-  }
+export async function checkOpenToWork(
+  linkedinUrl: string,
+  apiToken: string
+): Promise<OpenToWorkResult> {
+  const endpoint = `https://api.apify.com/v2/acts/bestscrapers~linkedin-open-to-work-status/run-sync-get-dataset-items?token=${apiToken}`;
 
   try {
-    let profileUrn: string;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        linkedin_url: linkedinUrl,
+      }),
+    });
 
-    if (isProfileUrn(publicIdentifier)) {
-      profileUrn = publicIdentifier;
-    } else {
-      profileUrn = await fetchProfileUrn(publicIdentifier);
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        openToWork: null,
+        error: `HTTP ${response.status}: ${errorText}`,
+      };
     }
 
-    const rawData = await fetchOpenToWorkPreferences(profileUrn);
-    return extractOpenToWorkData(rawData, publicIdentifier);
+    const data = await response.json();
 
-  } catch (error: any) {
+    // Apify returns an array of results
+    if (Array.isArray(data) && data.length > 0) {
+      const result = data[0];
+      // Handle different response formats
+      if (result.data && typeof result.data.open_to_work === "boolean") {
+        return {
+          success: true,
+          openToWork: result.data.open_to_work,
+        };
+      }
+      if (typeof result.open_to_work === "boolean") {
+        return {
+          success: true,
+          openToWork: result.open_to_work,
+        };
+      }
+    }
+
+    // Direct object response
+    if (data.data && typeof data.data.open_to_work === "boolean") {
+      return {
+        success: true,
+        openToWork: data.data.open_to_work,
+      };
+    }
+
     return {
-      isOpenToWork: null,
-      preferences: {},
-      profileName: null,
-      error: error.message,
+      success: false,
+      openToWork: null,
+      error: `Unexpected response format: ${JSON.stringify(data)}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      openToWork: null,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -357,7 +201,7 @@ const db = {
 const logger = {
   header(): void {
     console.log('═'.repeat(60));
-    console.log('LinkedIn Open-to-Work Status Enrichment');
+    console.log('LinkedIn Open-to-Work Status Enrichment (Apify)');
     console.log('═'.repeat(60));
     console.log(`Skip count:    ${CONFIG.skipCount} (top profiles to skip)`);
     console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles to process)`);
@@ -367,12 +211,11 @@ const logger = {
   },
 
   credentialStatus(): void {
-    const hasCredentials = CONFIG.linkedinLiAt && CONFIG.linkedinJsessionId;
-    if (hasCredentials) {
-      console.log('🔑 LinkedIn credentials: ✓ Configured\n');
+    if (CONFIG.apifyApiToken) {
+      console.log('🔑 Apify API Token: ✓ Configured\n');
     } else {
-      console.log('🔑 LinkedIn credentials: ✗ Missing');
-      console.log('   Set LINKEDIN_LI_AT and LINKEDIN_JSESSIONID in .env.local\n');
+      console.log('🔑 Apify API Token: ✗ Missing');
+      console.log('   Set APIFY_API_TOKEN in .env.local\n');
     }
   },
 
@@ -386,18 +229,12 @@ const logger = {
   },
 
   result(result: OpenToWorkResult): void {
-    if (result.error) {
+    if (!result.success) {
       console.log(`   ✗ Error: ${result.error}`);
-    } else if (result.isOpenToWork === null) {
+    } else if (result.openToWork === null) {
       console.log(`   ⚠ Status: Unknown`);
-    } else if (result.isOpenToWork) {
+    } else if (result.openToWork) {
       console.log(`   ✓ Status: OPEN TO WORK ✨`);
-      if (Object.keys(result.preferences).length > 0) {
-        console.log(`   Preferences:`);
-        for (const [key, value] of Object.entries(result.preferences)) {
-          console.log(`     - ${key}: ${value}`);
-        }
-      }
     } else {
       console.log(`   ✓ Status: Not actively looking`);
     }
@@ -425,14 +262,10 @@ async function main(): Promise<void> {
   logger.credentialStatus();
 
   // Validate credentials
-  if (!CONFIG.linkedinLiAt || !CONFIG.linkedinJsessionId) {
-    console.error('❌ Missing LinkedIn credentials. Please configure:');
-    console.error('   LINKEDIN_LI_AT - Your li_at cookie from LinkedIn');
-    console.error('   LINKEDIN_JSESSIONID - Your JSESSIONID cookie from LinkedIn');
-    console.error('\nTo get these cookies:');
-    console.error('1. Log in to LinkedIn in your browser');
-    console.error('2. Open Developer Tools (F12) → Application → Cookies');
-    console.error('3. Find www.linkedin.com and copy li_at and JSESSIONID values');
+  if (!CONFIG.apifyApiToken) {
+    console.error('❌ Missing Apify API Token. Please configure:');
+    console.error('   APIFY_API_TOKEN - Your Apify API token');
+    console.error('\nGet your token from: https://console.apify.com/account/integrations');
     process.exit(1);
   }
 
@@ -474,16 +307,16 @@ async function main(): Promise<void> {
     logger.linkedinUrl(user.linkedin);
 
     try {
-      const result = await checkOpenToWork(user.linkedin);
+      const result = await checkOpenToWork(user.linkedin, CONFIG.apifyApiToken);
       logger.result(result);
 
-      await db.updateOpenToWorkStatus(user.username, result.isOpenToWork);
+      await db.updateOpenToWorkStatus(user.username, result.openToWork);
 
-      if (result.error) {
+      if (!result.success) {
         stats.failed++;
       } else {
         stats.success++;
-        if (result.isOpenToWork === true) {
+        if (result.openToWork === true) {
           stats.openToWork++;
         }
       }
