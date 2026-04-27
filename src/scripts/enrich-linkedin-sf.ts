@@ -30,7 +30,7 @@
  */
 
 import { config } from 'dotenv';
-import { neon, NeonQueryFunction } from '@neondatabase/serverless';
+import { neon } from '@neondatabase/serverless';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -113,34 +113,6 @@ const CONFIG = {
 
 // Initialize database connection
 const sql = neon(CONFIG.databaseUrl);
-
-// ============================================================================
-// Location Filter - Single Source of Truth
-// ============================================================================
-
-/**
- * Build the location filter SQL clause for SF Bay Area
- * This is the SINGLE SOURCE OF TRUTH for location filtering
- */
-function buildLocationFilter(): string {
-  return SF_BAY_AREA_LOCATIONS
-    .map(loc => `LOWER(location) LIKE '%${loc.toLowerCase()}%'`)
-    .join(' OR ');
-}
-
-// Pre-built location filter for use in queries
-const SF_LOCATION_FILTER = buildLocationFilter();
-
-/**
- * Execute a raw SQL query with dynamic content
- * Neon's tagged template doesn't support dynamic SQL, so we use this helper
- */
-async function rawQuery<T>(queryString: string): Promise<T[]> {
-  // Use Function constructor to create a tagged template call
-  // This is safe because SF_LOCATION_FILTER is built from our static array
-  const fn = new Function('sql', `return sql\`${queryString}\``);
-  return fn(sql) as Promise<T[]>;
-}
 
 // ============================================================================
 // Types
