@@ -318,15 +318,36 @@ const db = {
    */
   async ensureColumns(): Promise<void> {
     console.log('📋 Ensuring database columns exist...');
+
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_permanent_failure BOOLEAN DEFAULT FALSE`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_error_code TEXT`;
-      console.log('   ✓ Database columns ready\n');
+      console.log('   ✓ Column is_open_to_work ready');
     } catch (error: any) {
-      console.log(`   ⚠ Column note: ${error.message}\n`);
+      console.log(`   ⚠ Column is_open_to_work: ${error.message}`);
     }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
+      console.log('   ✓ Column otw_scraped_at ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_scraped_at: ${error.message}`);
+    }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_permanent_failure BOOLEAN DEFAULT FALSE`;
+      console.log('   ✓ Column otw_permanent_failure ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_permanent_failure: ${error.message}`);
+    }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_error_code TEXT`;
+      console.log('   ✓ Column otw_error_code ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_error_code: ${error.message}`);
+    }
+
+    console.log('');
   },
 
   /**
