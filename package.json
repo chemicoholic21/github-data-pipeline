@@ -10,6 +10,7 @@
     "start": "node dist/cli.js",
     "bulk-discover": "tsx src/scripts/bulk-discover.ts",
     "enrich-linkedin": "tsx src/scripts/enrich-linkedin-apify.ts",
+    "enrich-linkedin-sf": "tsx src/scripts/enrich-linkedin-sf.ts",
     "db:push": "drizzle-kit push",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
