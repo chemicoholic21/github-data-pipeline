@@ -432,7 +432,8 @@ const db = {
           linkedin,
           location,
           total_score,
-          is_open_to_work
+          is_open_to_work,
+          otw_permanent_failure
         FROM leaderboard
         WHERE location IS NOT NULL
           AND (
@@ -486,6 +487,7 @@ const db = {
           location,
           total_score,
           is_open_to_work,
+          otw_permanent_failure,
           ROW_NUMBER() OVER (ORDER BY total_score DESC) as rank
         FROM sf_bay_area_users
       )
