@@ -36,7 +36,7 @@ import { neon } from '@neondatabase/serverless';
 config({ path: '.env.local' });
 config({ path: '.env' });
 
-// San Francisco Bay Area location patterns (60+ patterns)
+// San Francisco Bay Area location patterns (75+ patterns)
 const SF_BAY_AREA_LOCATIONS = [
   // Core San Francisco
   'san francisco',
@@ -44,6 +44,9 @@ const SF_BAY_AREA_LOCATIONS = [
   'sfo',
   'san fran',
   'frisco',
+  'the city by the bay',
+  'the golden gate city',
+  'golden gate bridge',
   'mission bay',
   'daly city',
   'south san francisco',
@@ -56,6 +59,7 @@ const SF_BAY_AREA_LOCATIONS = [
   'bay area, ca',
   'norcal',
   'northern california',
+  'america',
 
   // Silicon Valley / South Bay
   'silicon valley',
@@ -151,7 +155,7 @@ const CONFIG = {
 
   // Scraping settings
   skipCount: 250,          // Skip top N profiles in the SF Bay Area
-  fetchCount: 2000,        // Fetch next N profiles with LinkedIn (not yet scraped)
+  fetchCount: 4000,        // Fetch next N profiles with LinkedIn (not yet scraped)
   requestDelayMs: 4000,    // Delay between requests to avoid rate limiting
   maxRetries: 2,           // Number of retries for failed requests
   initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
@@ -412,6 +416,9 @@ const db = {
           OR LOWER(location) LIKE '%sfo%'
           OR LOWER(location) LIKE '%san fran%'
           OR LOWER(location) LIKE '%frisco%'
+          OR LOWER(location) LIKE '%the city by the bay%'
+          OR LOWER(location) LIKE '%the golden gate city%'
+          OR LOWER(location) LIKE '%golden gate bridge%'
           OR LOWER(location) LIKE '%mission bay%'
           OR LOWER(location) LIKE '%daly city%'
           OR LOWER(location) LIKE '%south san francisco%'
@@ -422,6 +429,7 @@ const db = {
           OR LOWER(location) LIKE '%sf bay area%'
           OR LOWER(location) LIKE '%norcal%'
           OR LOWER(location) LIKE '%northern california%'
+          OR LOWER(location) LIKE '%america%'
           -- Silicon Valley / South Bay
           OR LOWER(location) LIKE '%silicon valley%'
           OR LOWER(location) LIKE '%sv%'
@@ -529,6 +537,9 @@ const db = {
             OR LOWER(location) LIKE '%sfo%'
             OR LOWER(location) LIKE '%san fran%'
             OR LOWER(location) LIKE '%frisco%'
+            OR LOWER(location) LIKE '%the city by the bay%'
+            OR LOWER(location) LIKE '%the golden gate city%'
+            OR LOWER(location) LIKE '%golden gate bridge%'
             OR LOWER(location) LIKE '%mission bay%'
             OR LOWER(location) LIKE '%daly city%'
             OR LOWER(location) LIKE '%south san francisco%'
@@ -539,6 +550,7 @@ const db = {
             OR LOWER(location) LIKE '%sf bay area%'
             OR LOWER(location) LIKE '%norcal%'
             OR LOWER(location) LIKE '%northern california%'
+            OR LOWER(location) LIKE '%america%'
             -- Silicon Valley / South Bay
             OR LOWER(location) LIKE '%silicon valley%'
             OR LOWER(location) LIKE '%sv%'
@@ -653,6 +665,9 @@ const db = {
           OR LOWER(location) LIKE '%sfo%'
           OR LOWER(location) LIKE '%san fran%'
           OR LOWER(location) LIKE '%frisco%'
+          OR LOWER(location) LIKE '%the city by the bay%'
+          OR LOWER(location) LIKE '%the golden gate city%'
+          OR LOWER(location) LIKE '%golden gate bridge%'
           OR LOWER(location) LIKE '%mission bay%'
           OR LOWER(location) LIKE '%daly city%'
           OR LOWER(location) LIKE '%south san francisco%'
@@ -663,6 +678,7 @@ const db = {
           OR LOWER(location) LIKE '%sf bay area%'
           OR LOWER(location) LIKE '%norcal%'
           OR LOWER(location) LIKE '%northern california%'
+          OR LOWER(location) LIKE '%america%'
           -- Silicon Valley / South Bay
           OR LOWER(location) LIKE '%silicon valley%'
           OR LOWER(location) LIKE '%sv%'
