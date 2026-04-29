@@ -36,48 +36,94 @@ import { neon } from '@neondatabase/serverless';
 config({ path: '.env.local' });
 config({ path: '.env' });
 
-// San Francisco Bay Area location patterns
+// San Francisco Bay Area location patterns (60+ patterns)
 const SF_BAY_AREA_LOCATIONS = [
+  // Core San Francisco
   'san francisco',
   'sf',
+  'sfo',
   'san fran',
-  'bay area',
-  'sf bay area',
-  'silicon valley',
+  'frisco',
   'mission bay',
+  'daly city',
+  'south san francisco',
+  'ssf',
+
+  // Bay Area general
+  'bay area',
+  'the bay',
+  'sf bay area',
+  'bay area, ca',
+  'norcal',
+  'northern california',
+
+  // Silicon Valley / South Bay
+  'silicon valley',
+  'sv',
+  'south bay',
+  'peninsula',
+  'san jose',
+  'sj',
+  'sunnyvale',
+  'cupertino',
+  'mountain view',
+  'palo alto',
+  'menlo park',
+  'santa clara',
+  'milpitas',
+  'campbell',
+  'los gatos',
+  'saratoga',
+  'los altos',
+  'stanford',
+
+  // Peninsula
+  'redwood city',
+  'san mateo',
+  'foster city',
+  'burlingame',
+  'san bruno',
+  'brisbane',
+  'millbrae',
+  'belmont',
+  'san carlos',
+  'atherton',
+  'woodside',
+  'portola valley',
+  'half moon bay',
+
+  // East Bay
   'berkeley',
   'uc berkeley',
   'oakland',
-  'stanford',
-  'palo alto',
-  'mountain view',
-  'cupertino',
-  'menlo park',
-  'san jose',
-  'sj',
-  'daly city',
-  'sausalito',
-  'alameda',
-  'san bruno',
-  'brisbane',
-  'tiburon',
-  'burlingame',
-  'sunnyvale',
-  'santa clara',
+  'oaktown',
+  'east bay',
   'fremont',
-  'redwood city',
-  'san mateo',
   'hayward',
-  'milpitas',
-  'pleasanton',
-  'livermore',
-  'walnut creek',
-  'concord',
+  'alameda',
   'richmond',
   'emeryville',
-  'foster city',
-  'south san francisco',
-  'ssf',
+  'walnut creek',
+  'concord',
+  'pleasanton',
+  'livermore',
+  'dublin',
+  'san ramon',
+  'danville',
+  'castro valley',
+  'union city',
+  'newark',
+
+  // North Bay / Marin
+  'mill valley',
+  'sausalito',
+  'tiburon',
+  'san rafael',
+  'novato',
+  'marin county',
+  'marin',
+  'corte madera',
+  'larkspur',
 ];
 
 // Validate required environment variables early (fail fast)
@@ -113,23 +159,6 @@ const CONFIG = {
 
 // Initialize database connection
 const sql = neon(CONFIG.databaseUrl);
-
-// ============================================================================
-// Location Filter - Single Source of Truth
-// ============================================================================
-
-/**
- * Build the location filter SQL clause for SF Bay Area
- * This is the SINGLE SOURCE OF TRUTH for location filtering
- */
-function buildLocationFilter(): string {
-  return SF_BAY_AREA_LOCATIONS
-    .map(loc => `LOWER(location) LIKE '%${loc.toLowerCase()}%'`)
-    .join(' OR ');
-}
-
-// Pre-built location filter for use in queries
-const SF_LOCATION_FILTER = buildLocationFilter();
 
 // ============================================================================
 // Types
@@ -335,15 +364,36 @@ const db = {
    */
   async ensureColumns(): Promise<void> {
     console.log('📋 Ensuring database columns exist...');
+
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_permanent_failure BOOLEAN DEFAULT FALSE`;
-      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_error_code TEXT`;
-      console.log('   ✓ Database columns ready\n');
+      console.log('   ✓ Column is_open_to_work ready');
     } catch (error: any) {
-      console.log(`   ⚠ Column note: ${error.message}\n`);
+      console.log(`   ⚠ Column is_open_to_work: ${error.message}`);
     }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
+      console.log('   ✓ Column otw_scraped_at ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_scraped_at: ${error.message}`);
+    }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_permanent_failure BOOLEAN DEFAULT FALSE`;
+      console.log('   ✓ Column otw_permanent_failure ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_permanent_failure: ${error.message}`);
+    }
+
+    try {
+      await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_error_code TEXT`;
+      console.log('   ✓ Column otw_error_code ready');
+    } catch (error: any) {
+      console.log(`   ⚠ Column otw_error_code: ${error.message}`);
+    }
+
+    console.log('');
   },
 
   /**
@@ -351,14 +401,93 @@ const db = {
    * Uses the shared location filter
    */
   async getTotalSFBayAreaCount(): Promise<number> {
-    // Using raw SQL with the pre-built filter
-    const query = `
+    const result = await sql`
       SELECT COUNT(*) as count
       FROM leaderboard
       WHERE location IS NOT NULL
-        AND (${SF_LOCATION_FILTER})
+        AND (
+          -- Core San Francisco
+          LOWER(location) LIKE '%san francisco%'
+          OR LOWER(location) LIKE '%sf%'
+          OR LOWER(location) LIKE '%sfo%'
+          OR LOWER(location) LIKE '%san fran%'
+          OR LOWER(location) LIKE '%frisco%'
+          OR LOWER(location) LIKE '%mission bay%'
+          OR LOWER(location) LIKE '%daly city%'
+          OR LOWER(location) LIKE '%south san francisco%'
+          OR LOWER(location) LIKE '%ssf%'
+          -- Bay Area general
+          OR LOWER(location) LIKE '%bay area%'
+          OR LOWER(location) LIKE '%the bay%'
+          OR LOWER(location) LIKE '%sf bay area%'
+          OR LOWER(location) LIKE '%norcal%'
+          OR LOWER(location) LIKE '%northern california%'
+          -- Silicon Valley / South Bay
+          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%sv%'
+          OR LOWER(location) LIKE '%south bay%'
+          OR LOWER(location) LIKE '%peninsula%'
+          OR LOWER(location) LIKE '%san jose%'
+          OR LOWER(location) LIKE '%sj%'
+          OR LOWER(location) LIKE '%sunnyvale%'
+          OR LOWER(location) LIKE '%cupertino%'
+          OR LOWER(location) LIKE '%mountain view%'
+          OR LOWER(location) LIKE '%palo alto%'
+          OR LOWER(location) LIKE '%menlo park%'
+          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%milpitas%'
+          OR LOWER(location) LIKE '%campbell%'
+          OR LOWER(location) LIKE '%los gatos%'
+          OR LOWER(location) LIKE '%saratoga%'
+          OR LOWER(location) LIKE '%los altos%'
+          OR LOWER(location) LIKE '%stanford%'
+          -- Peninsula
+          OR LOWER(location) LIKE '%redwood city%'
+          OR LOWER(location) LIKE '%san mateo%'
+          OR LOWER(location) LIKE '%foster city%'
+          OR LOWER(location) LIKE '%burlingame%'
+          OR LOWER(location) LIKE '%san bruno%'
+          OR LOWER(location) LIKE '%brisbane%'
+          OR LOWER(location) LIKE '%millbrae%'
+          OR LOWER(location) LIKE '%belmont%'
+          OR LOWER(location) LIKE '%san carlos%'
+          OR LOWER(location) LIKE '%atherton%'
+          OR LOWER(location) LIKE '%woodside%'
+          OR LOWER(location) LIKE '%portola valley%'
+          OR LOWER(location) LIKE '%half moon bay%'
+          -- East Bay
+          OR LOWER(location) LIKE '%berkeley%'
+          OR LOWER(location) LIKE '%uc berkeley%'
+          OR LOWER(location) LIKE '%oakland%'
+          OR LOWER(location) LIKE '%oaktown%'
+          OR LOWER(location) LIKE '%east bay%'
+          OR LOWER(location) LIKE '%fremont%'
+          OR LOWER(location) LIKE '%hayward%'
+          OR LOWER(location) LIKE '%alameda%'
+          OR LOWER(location) LIKE '%richmond%'
+          OR LOWER(location) LIKE '%emeryville%'
+          OR LOWER(location) LIKE '%walnut creek%'
+          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%pleasanton%'
+          OR LOWER(location) LIKE '%livermore%'
+          OR LOWER(location) LIKE '%dublin%'
+          OR LOWER(location) LIKE '%san ramon%'
+          OR LOWER(location) LIKE '%danville%'
+          OR LOWER(location) LIKE '%castro valley%'
+          OR LOWER(location) LIKE '%union city%'
+          OR LOWER(location) LIKE '%newark%'
+          -- North Bay / Marin
+          OR LOWER(location) LIKE '%mill valley%'
+          OR LOWER(location) LIKE '%sausalito%'
+          OR LOWER(location) LIKE '%tiburon%'
+          OR LOWER(location) LIKE '%san rafael%'
+          OR LOWER(location) LIKE '%novato%'
+          OR LOWER(location) LIKE '%marin county%'
+          OR LOWER(location) LIKE '%marin%'
+          OR LOWER(location) LIKE '%corte madera%'
+          OR LOWER(location) LIKE '%larkspur%'
+        )
     `;
-    const result = await sql(query);
     return Number(result[0]?.count ?? 0);
   },
 
@@ -381,23 +510,8 @@ const db = {
     console.log(`   - Get next ${limit} with LinkedIn + not yet scraped`);
     console.log(`   - Formula: score = stars × (user_prs / total_prs)`);
 
-    // Using raw SQL with the pre-built filter
-    const query = `
+    const users = await sql`
       WITH sf_bay_area_users AS (
-        -- First, filter to only SF Bay Area users
-        SELECT
-          username,
-          name,
-          linkedin,
-          location,
-          total_score,
-          is_open_to_work
-        FROM leaderboard
-        WHERE location IS NOT NULL
-          AND (${SF_LOCATION_FILTER})
-      ),
-      ranked_sf_users AS (
-        -- Rank SF Bay Area users by total_score
         SELECT
           username,
           name,
@@ -405,22 +519,115 @@ const db = {
           location,
           total_score,
           is_open_to_work,
+          otw_permanent_failure
+        FROM leaderboard
+        WHERE location IS NOT NULL
+          AND (
+            -- Core San Francisco
+            LOWER(location) LIKE '%san francisco%'
+            OR LOWER(location) LIKE '%sf%'
+            OR LOWER(location) LIKE '%sfo%'
+            OR LOWER(location) LIKE '%san fran%'
+            OR LOWER(location) LIKE '%frisco%'
+            OR LOWER(location) LIKE '%mission bay%'
+            OR LOWER(location) LIKE '%daly city%'
+            OR LOWER(location) LIKE '%south san francisco%'
+            OR LOWER(location) LIKE '%ssf%'
+            -- Bay Area general
+            OR LOWER(location) LIKE '%bay area%'
+            OR LOWER(location) LIKE '%the bay%'
+            OR LOWER(location) LIKE '%sf bay area%'
+            OR LOWER(location) LIKE '%norcal%'
+            OR LOWER(location) LIKE '%northern california%'
+            -- Silicon Valley / South Bay
+            OR LOWER(location) LIKE '%silicon valley%'
+            OR LOWER(location) LIKE '%sv%'
+            OR LOWER(location) LIKE '%south bay%'
+            OR LOWER(location) LIKE '%peninsula%'
+            OR LOWER(location) LIKE '%san jose%'
+            OR LOWER(location) LIKE '%sj%'
+            OR LOWER(location) LIKE '%sunnyvale%'
+            OR LOWER(location) LIKE '%cupertino%'
+            OR LOWER(location) LIKE '%mountain view%'
+            OR LOWER(location) LIKE '%palo alto%'
+            OR LOWER(location) LIKE '%menlo park%'
+            OR LOWER(location) LIKE '%santa clara%'
+            OR LOWER(location) LIKE '%milpitas%'
+            OR LOWER(location) LIKE '%campbell%'
+            OR LOWER(location) LIKE '%los gatos%'
+            OR LOWER(location) LIKE '%saratoga%'
+            OR LOWER(location) LIKE '%los altos%'
+            OR LOWER(location) LIKE '%stanford%'
+            -- Peninsula
+            OR LOWER(location) LIKE '%redwood city%'
+            OR LOWER(location) LIKE '%san mateo%'
+            OR LOWER(location) LIKE '%foster city%'
+            OR LOWER(location) LIKE '%burlingame%'
+            OR LOWER(location) LIKE '%san bruno%'
+            OR LOWER(location) LIKE '%brisbane%'
+            OR LOWER(location) LIKE '%millbrae%'
+            OR LOWER(location) LIKE '%belmont%'
+            OR LOWER(location) LIKE '%san carlos%'
+            OR LOWER(location) LIKE '%atherton%'
+            OR LOWER(location) LIKE '%woodside%'
+            OR LOWER(location) LIKE '%portola valley%'
+            OR LOWER(location) LIKE '%half moon bay%'
+            -- East Bay
+            OR LOWER(location) LIKE '%berkeley%'
+            OR LOWER(location) LIKE '%uc berkeley%'
+            OR LOWER(location) LIKE '%oakland%'
+            OR LOWER(location) LIKE '%oaktown%'
+            OR LOWER(location) LIKE '%east bay%'
+            OR LOWER(location) LIKE '%fremont%'
+            OR LOWER(location) LIKE '%hayward%'
+            OR LOWER(location) LIKE '%alameda%'
+            OR LOWER(location) LIKE '%richmond%'
+            OR LOWER(location) LIKE '%emeryville%'
+            OR LOWER(location) LIKE '%walnut creek%'
+            OR LOWER(location) LIKE '%concord%'
+            OR LOWER(location) LIKE '%pleasanton%'
+            OR LOWER(location) LIKE '%livermore%'
+            OR LOWER(location) LIKE '%dublin%'
+            OR LOWER(location) LIKE '%san ramon%'
+            OR LOWER(location) LIKE '%danville%'
+            OR LOWER(location) LIKE '%castro valley%'
+            OR LOWER(location) LIKE '%union city%'
+            OR LOWER(location) LIKE '%newark%'
+            -- North Bay / Marin
+            OR LOWER(location) LIKE '%mill valley%'
+            OR LOWER(location) LIKE '%sausalito%'
+            OR LOWER(location) LIKE '%tiburon%'
+            OR LOWER(location) LIKE '%san rafael%'
+            OR LOWER(location) LIKE '%novato%'
+            OR LOWER(location) LIKE '%marin county%'
+            OR LOWER(location) LIKE '%marin%'
+            OR LOWER(location) LIKE '%corte madera%'
+            OR LOWER(location) LIKE '%larkspur%'
+          )
+      ),
+      ranked_sf_users AS (
+        SELECT
+          username,
+          name,
+          linkedin,
+          location,
+          total_score,
+          is_open_to_work,
+          otw_permanent_failure,
           ROW_NUMBER() OVER (ORDER BY total_score DESC) as rank
         FROM sf_bay_area_users
       )
-      -- Get users after the skip threshold who have LinkedIn and haven't been scraped
       SELECT username, name, linkedin, location, total_score, rank, is_open_to_work
       FROM ranked_sf_users
-      WHERE rank > $1
+      WHERE rank > ${offset}
         AND linkedin IS NOT NULL
         AND linkedin != ''
         AND is_open_to_work IS NULL
         AND (otw_permanent_failure IS NULL OR otw_permanent_failure = FALSE)
       ORDER BY rank ASC
-      LIMIT $2
-    `;
+      LIMIT ${limit}
+    ` as unknown as LeaderboardUser[];
 
-    const users = await sql(query, [offset, limit]) as unknown as LeaderboardUser[];
     return users;
   },
 
@@ -432,18 +639,98 @@ const db = {
     notOpenToWork: number;
     permanentFailures: number;
   }> {
-    const query = `
+    const result = await sql`
       SELECT
         COUNT(*) FILTER (WHERE is_open_to_work = true) as open_to_work,
         COUNT(*) FILTER (WHERE is_open_to_work = false) as not_open_to_work,
         COUNT(*) FILTER (WHERE otw_permanent_failure = true) as permanent_failures
       FROM leaderboard
       WHERE location IS NOT NULL
-        AND (${SF_LOCATION_FILTER})
+        AND (
+          -- Core San Francisco
+          LOWER(location) LIKE '%san francisco%'
+          OR LOWER(location) LIKE '%sf%'
+          OR LOWER(location) LIKE '%sfo%'
+          OR LOWER(location) LIKE '%san fran%'
+          OR LOWER(location) LIKE '%frisco%'
+          OR LOWER(location) LIKE '%mission bay%'
+          OR LOWER(location) LIKE '%daly city%'
+          OR LOWER(location) LIKE '%south san francisco%'
+          OR LOWER(location) LIKE '%ssf%'
+          -- Bay Area general
+          OR LOWER(location) LIKE '%bay area%'
+          OR LOWER(location) LIKE '%the bay%'
+          OR LOWER(location) LIKE '%sf bay area%'
+          OR LOWER(location) LIKE '%norcal%'
+          OR LOWER(location) LIKE '%northern california%'
+          -- Silicon Valley / South Bay
+          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%sv%'
+          OR LOWER(location) LIKE '%south bay%'
+          OR LOWER(location) LIKE '%peninsula%'
+          OR LOWER(location) LIKE '%san jose%'
+          OR LOWER(location) LIKE '%sj%'
+          OR LOWER(location) LIKE '%sunnyvale%'
+          OR LOWER(location) LIKE '%cupertino%'
+          OR LOWER(location) LIKE '%mountain view%'
+          OR LOWER(location) LIKE '%palo alto%'
+          OR LOWER(location) LIKE '%menlo park%'
+          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%milpitas%'
+          OR LOWER(location) LIKE '%campbell%'
+          OR LOWER(location) LIKE '%los gatos%'
+          OR LOWER(location) LIKE '%saratoga%'
+          OR LOWER(location) LIKE '%los altos%'
+          OR LOWER(location) LIKE '%stanford%'
+          -- Peninsula
+          OR LOWER(location) LIKE '%redwood city%'
+          OR LOWER(location) LIKE '%san mateo%'
+          OR LOWER(location) LIKE '%foster city%'
+          OR LOWER(location) LIKE '%burlingame%'
+          OR LOWER(location) LIKE '%san bruno%'
+          OR LOWER(location) LIKE '%brisbane%'
+          OR LOWER(location) LIKE '%millbrae%'
+          OR LOWER(location) LIKE '%belmont%'
+          OR LOWER(location) LIKE '%san carlos%'
+          OR LOWER(location) LIKE '%atherton%'
+          OR LOWER(location) LIKE '%woodside%'
+          OR LOWER(location) LIKE '%portola valley%'
+          OR LOWER(location) LIKE '%half moon bay%'
+          -- East Bay
+          OR LOWER(location) LIKE '%berkeley%'
+          OR LOWER(location) LIKE '%uc berkeley%'
+          OR LOWER(location) LIKE '%oakland%'
+          OR LOWER(location) LIKE '%oaktown%'
+          OR LOWER(location) LIKE '%east bay%'
+          OR LOWER(location) LIKE '%fremont%'
+          OR LOWER(location) LIKE '%hayward%'
+          OR LOWER(location) LIKE '%alameda%'
+          OR LOWER(location) LIKE '%richmond%'
+          OR LOWER(location) LIKE '%emeryville%'
+          OR LOWER(location) LIKE '%walnut creek%'
+          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%pleasanton%'
+          OR LOWER(location) LIKE '%livermore%'
+          OR LOWER(location) LIKE '%dublin%'
+          OR LOWER(location) LIKE '%san ramon%'
+          OR LOWER(location) LIKE '%danville%'
+          OR LOWER(location) LIKE '%castro valley%'
+          OR LOWER(location) LIKE '%union city%'
+          OR LOWER(location) LIKE '%newark%'
+          -- North Bay / Marin
+          OR LOWER(location) LIKE '%mill valley%'
+          OR LOWER(location) LIKE '%sausalito%'
+          OR LOWER(location) LIKE '%tiburon%'
+          OR LOWER(location) LIKE '%san rafael%'
+          OR LOWER(location) LIKE '%novato%'
+          OR LOWER(location) LIKE '%marin county%'
+          OR LOWER(location) LIKE '%marin%'
+          OR LOWER(location) LIKE '%corte madera%'
+          OR LOWER(location) LIKE '%larkspur%'
+        )
         AND linkedin IS NOT NULL
         AND linkedin != ''
     `;
-    const result = await sql(query);
     return {
       openToWork: Number(result[0]?.open_to_work ?? 0),
       notOpenToWork: Number(result[0]?.not_open_to_work ?? 0),
