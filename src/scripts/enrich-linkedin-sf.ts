@@ -36,48 +36,94 @@ import { neon } from '@neondatabase/serverless';
 config({ path: '.env.local' });
 config({ path: '.env' });
 
-// San Francisco Bay Area location patterns
+// San Francisco Bay Area location patterns (60+ patterns)
 const SF_BAY_AREA_LOCATIONS = [
+  // Core San Francisco
   'san francisco',
   'sf',
+  'sfo',
   'san fran',
-  'bay area',
-  'sf bay area',
-  'silicon valley',
+  'frisco',
   'mission bay',
+  'daly city',
+  'south san francisco',
+  'ssf',
+
+  // Bay Area general
+  'bay area',
+  'the bay',
+  'sf bay area',
+  'bay area, ca',
+  'norcal',
+  'northern california',
+
+  // Silicon Valley / South Bay
+  'silicon valley',
+  'sv',
+  'south bay',
+  'peninsula',
+  'san jose',
+  'sj',
+  'sunnyvale',
+  'cupertino',
+  'mountain view',
+  'palo alto',
+  'menlo park',
+  'santa clara',
+  'milpitas',
+  'campbell',
+  'los gatos',
+  'saratoga',
+  'los altos',
+  'stanford',
+
+  // Peninsula
+  'redwood city',
+  'san mateo',
+  'foster city',
+  'burlingame',
+  'san bruno',
+  'brisbane',
+  'millbrae',
+  'belmont',
+  'san carlos',
+  'atherton',
+  'woodside',
+  'portola valley',
+  'half moon bay',
+
+  // East Bay
   'berkeley',
   'uc berkeley',
   'oakland',
-  'stanford',
-  'palo alto',
-  'mountain view',
-  'cupertino',
-  'menlo park',
-  'san jose',
-  'sj',
-  'daly city',
-  'sausalito',
-  'alameda',
-  'san bruno',
-  'brisbane',
-  'tiburon',
-  'burlingame',
-  'sunnyvale',
-  'santa clara',
+  'oaktown',
+  'east bay',
   'fremont',
-  'redwood city',
-  'san mateo',
   'hayward',
-  'milpitas',
-  'pleasanton',
-  'livermore',
-  'walnut creek',
-  'concord',
+  'alameda',
   'richmond',
   'emeryville',
-  'foster city',
-  'south san francisco',
-  'ssf',
+  'walnut creek',
+  'concord',
+  'pleasanton',
+  'livermore',
+  'dublin',
+  'san ramon',
+  'danville',
+  'castro valley',
+  'union city',
+  'newark',
+
+  // North Bay / Marin
+  'mill valley',
+  'sausalito',
+  'tiburon',
+  'san rafael',
+  'novato',
+  'marin county',
+  'marin',
+  'corte madera',
+  'larkspur',
 ];
 
 // Validate required environment variables early (fail fast)
@@ -360,46 +406,86 @@ const db = {
       FROM leaderboard
       WHERE location IS NOT NULL
         AND (
+          -- Core San Francisco
           LOWER(location) LIKE '%san francisco%'
           OR LOWER(location) LIKE '%sf%'
+          OR LOWER(location) LIKE '%sfo%'
           OR LOWER(location) LIKE '%san fran%'
-          OR LOWER(location) LIKE '%bay area%'
-          OR LOWER(location) LIKE '%sf bay area%'
-          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%frisco%'
           OR LOWER(location) LIKE '%mission bay%'
+          OR LOWER(location) LIKE '%daly city%'
+          OR LOWER(location) LIKE '%south san francisco%'
+          OR LOWER(location) LIKE '%ssf%'
+          -- Bay Area general
+          OR LOWER(location) LIKE '%bay area%'
+          OR LOWER(location) LIKE '%the bay%'
+          OR LOWER(location) LIKE '%sf bay area%'
+          OR LOWER(location) LIKE '%norcal%'
+          OR LOWER(location) LIKE '%northern california%'
+          -- Silicon Valley / South Bay
+          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%sv%'
+          OR LOWER(location) LIKE '%south bay%'
+          OR LOWER(location) LIKE '%peninsula%'
+          OR LOWER(location) LIKE '%san jose%'
+          OR LOWER(location) LIKE '%sj%'
+          OR LOWER(location) LIKE '%sunnyvale%'
+          OR LOWER(location) LIKE '%cupertino%'
+          OR LOWER(location) LIKE '%mountain view%'
+          OR LOWER(location) LIKE '%palo alto%'
+          OR LOWER(location) LIKE '%menlo park%'
+          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%milpitas%'
+          OR LOWER(location) LIKE '%campbell%'
+          OR LOWER(location) LIKE '%los gatos%'
+          OR LOWER(location) LIKE '%saratoga%'
+          OR LOWER(location) LIKE '%los altos%'
+          OR LOWER(location) LIKE '%stanford%'
+          -- Peninsula
+          OR LOWER(location) LIKE '%redwood city%'
+          OR LOWER(location) LIKE '%san mateo%'
+          OR LOWER(location) LIKE '%foster city%'
+          OR LOWER(location) LIKE '%burlingame%'
+          OR LOWER(location) LIKE '%san bruno%'
+          OR LOWER(location) LIKE '%brisbane%'
+          OR LOWER(location) LIKE '%millbrae%'
+          OR LOWER(location) LIKE '%belmont%'
+          OR LOWER(location) LIKE '%san carlos%'
+          OR LOWER(location) LIKE '%atherton%'
+          OR LOWER(location) LIKE '%woodside%'
+          OR LOWER(location) LIKE '%portola valley%'
+          OR LOWER(location) LIKE '%half moon bay%'
+          -- East Bay
           OR LOWER(location) LIKE '%berkeley%'
           OR LOWER(location) LIKE '%uc berkeley%'
           OR LOWER(location) LIKE '%oakland%'
-          OR LOWER(location) LIKE '%stanford%'
-          OR LOWER(location) LIKE '%palo alto%'
-          OR LOWER(location) LIKE '%mountain view%'
-          OR LOWER(location) LIKE '%cupertino%'
-          OR LOWER(location) LIKE '%menlo park%'
-          OR LOWER(location) LIKE '%san jose%'
-          OR LOWER(location) LIKE '%sj%'
-          OR LOWER(location) LIKE '%daly city%'
-          OR LOWER(location) LIKE '%sausalito%'
-          OR LOWER(location) LIKE '%alameda%'
-          OR LOWER(location) LIKE '%san bruno%'
-          OR LOWER(location) LIKE '%brisbane%'
-          OR LOWER(location) LIKE '%tiburon%'
-          OR LOWER(location) LIKE '%burlingame%'
-          OR LOWER(location) LIKE '%sunnyvale%'
-          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%oaktown%'
+          OR LOWER(location) LIKE '%east bay%'
           OR LOWER(location) LIKE '%fremont%'
-          OR LOWER(location) LIKE '%redwood city%'
-          OR LOWER(location) LIKE '%san mateo%'
           OR LOWER(location) LIKE '%hayward%'
-          OR LOWER(location) LIKE '%milpitas%'
-          OR LOWER(location) LIKE '%pleasanton%'
-          OR LOWER(location) LIKE '%livermore%'
-          OR LOWER(location) LIKE '%walnut creek%'
-          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%alameda%'
           OR LOWER(location) LIKE '%richmond%'
           OR LOWER(location) LIKE '%emeryville%'
-          OR LOWER(location) LIKE '%foster city%'
-          OR LOWER(location) LIKE '%south san francisco%'
-          OR LOWER(location) LIKE '%ssf%'
+          OR LOWER(location) LIKE '%walnut creek%'
+          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%pleasanton%'
+          OR LOWER(location) LIKE '%livermore%'
+          OR LOWER(location) LIKE '%dublin%'
+          OR LOWER(location) LIKE '%san ramon%'
+          OR LOWER(location) LIKE '%danville%'
+          OR LOWER(location) LIKE '%castro valley%'
+          OR LOWER(location) LIKE '%union city%'
+          OR LOWER(location) LIKE '%newark%'
+          -- North Bay / Marin
+          OR LOWER(location) LIKE '%mill valley%'
+          OR LOWER(location) LIKE '%sausalito%'
+          OR LOWER(location) LIKE '%tiburon%'
+          OR LOWER(location) LIKE '%san rafael%'
+          OR LOWER(location) LIKE '%novato%'
+          OR LOWER(location) LIKE '%marin county%'
+          OR LOWER(location) LIKE '%marin%'
+          OR LOWER(location) LIKE '%corte madera%'
+          OR LOWER(location) LIKE '%larkspur%'
         )
     `;
     return Number(result[0]?.count ?? 0);
@@ -437,46 +523,86 @@ const db = {
         FROM leaderboard
         WHERE location IS NOT NULL
           AND (
+            -- Core San Francisco
             LOWER(location) LIKE '%san francisco%'
             OR LOWER(location) LIKE '%sf%'
+            OR LOWER(location) LIKE '%sfo%'
             OR LOWER(location) LIKE '%san fran%'
-            OR LOWER(location) LIKE '%bay area%'
-            OR LOWER(location) LIKE '%sf bay area%'
-            OR LOWER(location) LIKE '%silicon valley%'
+            OR LOWER(location) LIKE '%frisco%'
             OR LOWER(location) LIKE '%mission bay%'
+            OR LOWER(location) LIKE '%daly city%'
+            OR LOWER(location) LIKE '%south san francisco%'
+            OR LOWER(location) LIKE '%ssf%'
+            -- Bay Area general
+            OR LOWER(location) LIKE '%bay area%'
+            OR LOWER(location) LIKE '%the bay%'
+            OR LOWER(location) LIKE '%sf bay area%'
+            OR LOWER(location) LIKE '%norcal%'
+            OR LOWER(location) LIKE '%northern california%'
+            -- Silicon Valley / South Bay
+            OR LOWER(location) LIKE '%silicon valley%'
+            OR LOWER(location) LIKE '%sv%'
+            OR LOWER(location) LIKE '%south bay%'
+            OR LOWER(location) LIKE '%peninsula%'
+            OR LOWER(location) LIKE '%san jose%'
+            OR LOWER(location) LIKE '%sj%'
+            OR LOWER(location) LIKE '%sunnyvale%'
+            OR LOWER(location) LIKE '%cupertino%'
+            OR LOWER(location) LIKE '%mountain view%'
+            OR LOWER(location) LIKE '%palo alto%'
+            OR LOWER(location) LIKE '%menlo park%'
+            OR LOWER(location) LIKE '%santa clara%'
+            OR LOWER(location) LIKE '%milpitas%'
+            OR LOWER(location) LIKE '%campbell%'
+            OR LOWER(location) LIKE '%los gatos%'
+            OR LOWER(location) LIKE '%saratoga%'
+            OR LOWER(location) LIKE '%los altos%'
+            OR LOWER(location) LIKE '%stanford%'
+            -- Peninsula
+            OR LOWER(location) LIKE '%redwood city%'
+            OR LOWER(location) LIKE '%san mateo%'
+            OR LOWER(location) LIKE '%foster city%'
+            OR LOWER(location) LIKE '%burlingame%'
+            OR LOWER(location) LIKE '%san bruno%'
+            OR LOWER(location) LIKE '%brisbane%'
+            OR LOWER(location) LIKE '%millbrae%'
+            OR LOWER(location) LIKE '%belmont%'
+            OR LOWER(location) LIKE '%san carlos%'
+            OR LOWER(location) LIKE '%atherton%'
+            OR LOWER(location) LIKE '%woodside%'
+            OR LOWER(location) LIKE '%portola valley%'
+            OR LOWER(location) LIKE '%half moon bay%'
+            -- East Bay
             OR LOWER(location) LIKE '%berkeley%'
             OR LOWER(location) LIKE '%uc berkeley%'
             OR LOWER(location) LIKE '%oakland%'
-            OR LOWER(location) LIKE '%stanford%'
-            OR LOWER(location) LIKE '%palo alto%'
-            OR LOWER(location) LIKE '%mountain view%'
-            OR LOWER(location) LIKE '%cupertino%'
-            OR LOWER(location) LIKE '%menlo park%'
-            OR LOWER(location) LIKE '%san jose%'
-            OR LOWER(location) LIKE '%sj%'
-            OR LOWER(location) LIKE '%daly city%'
-            OR LOWER(location) LIKE '%sausalito%'
-            OR LOWER(location) LIKE '%alameda%'
-            OR LOWER(location) LIKE '%san bruno%'
-            OR LOWER(location) LIKE '%brisbane%'
-            OR LOWER(location) LIKE '%tiburon%'
-            OR LOWER(location) LIKE '%burlingame%'
-            OR LOWER(location) LIKE '%sunnyvale%'
-            OR LOWER(location) LIKE '%santa clara%'
+            OR LOWER(location) LIKE '%oaktown%'
+            OR LOWER(location) LIKE '%east bay%'
             OR LOWER(location) LIKE '%fremont%'
-            OR LOWER(location) LIKE '%redwood city%'
-            OR LOWER(location) LIKE '%san mateo%'
             OR LOWER(location) LIKE '%hayward%'
-            OR LOWER(location) LIKE '%milpitas%'
-            OR LOWER(location) LIKE '%pleasanton%'
-            OR LOWER(location) LIKE '%livermore%'
-            OR LOWER(location) LIKE '%walnut creek%'
-            OR LOWER(location) LIKE '%concord%'
+            OR LOWER(location) LIKE '%alameda%'
             OR LOWER(location) LIKE '%richmond%'
             OR LOWER(location) LIKE '%emeryville%'
-            OR LOWER(location) LIKE '%foster city%'
-            OR LOWER(location) LIKE '%south san francisco%'
-            OR LOWER(location) LIKE '%ssf%'
+            OR LOWER(location) LIKE '%walnut creek%'
+            OR LOWER(location) LIKE '%concord%'
+            OR LOWER(location) LIKE '%pleasanton%'
+            OR LOWER(location) LIKE '%livermore%'
+            OR LOWER(location) LIKE '%dublin%'
+            OR LOWER(location) LIKE '%san ramon%'
+            OR LOWER(location) LIKE '%danville%'
+            OR LOWER(location) LIKE '%castro valley%'
+            OR LOWER(location) LIKE '%union city%'
+            OR LOWER(location) LIKE '%newark%'
+            -- North Bay / Marin
+            OR LOWER(location) LIKE '%mill valley%'
+            OR LOWER(location) LIKE '%sausalito%'
+            OR LOWER(location) LIKE '%tiburon%'
+            OR LOWER(location) LIKE '%san rafael%'
+            OR LOWER(location) LIKE '%novato%'
+            OR LOWER(location) LIKE '%marin county%'
+            OR LOWER(location) LIKE '%marin%'
+            OR LOWER(location) LIKE '%corte madera%'
+            OR LOWER(location) LIKE '%larkspur%'
           )
       ),
       ranked_sf_users AS (
@@ -521,46 +647,86 @@ const db = {
       FROM leaderboard
       WHERE location IS NOT NULL
         AND (
+          -- Core San Francisco
           LOWER(location) LIKE '%san francisco%'
           OR LOWER(location) LIKE '%sf%'
+          OR LOWER(location) LIKE '%sfo%'
           OR LOWER(location) LIKE '%san fran%'
-          OR LOWER(location) LIKE '%bay area%'
-          OR LOWER(location) LIKE '%sf bay area%'
-          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%frisco%'
           OR LOWER(location) LIKE '%mission bay%'
+          OR LOWER(location) LIKE '%daly city%'
+          OR LOWER(location) LIKE '%south san francisco%'
+          OR LOWER(location) LIKE '%ssf%'
+          -- Bay Area general
+          OR LOWER(location) LIKE '%bay area%'
+          OR LOWER(location) LIKE '%the bay%'
+          OR LOWER(location) LIKE '%sf bay area%'
+          OR LOWER(location) LIKE '%norcal%'
+          OR LOWER(location) LIKE '%northern california%'
+          -- Silicon Valley / South Bay
+          OR LOWER(location) LIKE '%silicon valley%'
+          OR LOWER(location) LIKE '%sv%'
+          OR LOWER(location) LIKE '%south bay%'
+          OR LOWER(location) LIKE '%peninsula%'
+          OR LOWER(location) LIKE '%san jose%'
+          OR LOWER(location) LIKE '%sj%'
+          OR LOWER(location) LIKE '%sunnyvale%'
+          OR LOWER(location) LIKE '%cupertino%'
+          OR LOWER(location) LIKE '%mountain view%'
+          OR LOWER(location) LIKE '%palo alto%'
+          OR LOWER(location) LIKE '%menlo park%'
+          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%milpitas%'
+          OR LOWER(location) LIKE '%campbell%'
+          OR LOWER(location) LIKE '%los gatos%'
+          OR LOWER(location) LIKE '%saratoga%'
+          OR LOWER(location) LIKE '%los altos%'
+          OR LOWER(location) LIKE '%stanford%'
+          -- Peninsula
+          OR LOWER(location) LIKE '%redwood city%'
+          OR LOWER(location) LIKE '%san mateo%'
+          OR LOWER(location) LIKE '%foster city%'
+          OR LOWER(location) LIKE '%burlingame%'
+          OR LOWER(location) LIKE '%san bruno%'
+          OR LOWER(location) LIKE '%brisbane%'
+          OR LOWER(location) LIKE '%millbrae%'
+          OR LOWER(location) LIKE '%belmont%'
+          OR LOWER(location) LIKE '%san carlos%'
+          OR LOWER(location) LIKE '%atherton%'
+          OR LOWER(location) LIKE '%woodside%'
+          OR LOWER(location) LIKE '%portola valley%'
+          OR LOWER(location) LIKE '%half moon bay%'
+          -- East Bay
           OR LOWER(location) LIKE '%berkeley%'
           OR LOWER(location) LIKE '%uc berkeley%'
           OR LOWER(location) LIKE '%oakland%'
-          OR LOWER(location) LIKE '%stanford%'
-          OR LOWER(location) LIKE '%palo alto%'
-          OR LOWER(location) LIKE '%mountain view%'
-          OR LOWER(location) LIKE '%cupertino%'
-          OR LOWER(location) LIKE '%menlo park%'
-          OR LOWER(location) LIKE '%san jose%'
-          OR LOWER(location) LIKE '%sj%'
-          OR LOWER(location) LIKE '%daly city%'
-          OR LOWER(location) LIKE '%sausalito%'
-          OR LOWER(location) LIKE '%alameda%'
-          OR LOWER(location) LIKE '%san bruno%'
-          OR LOWER(location) LIKE '%brisbane%'
-          OR LOWER(location) LIKE '%tiburon%'
-          OR LOWER(location) LIKE '%burlingame%'
-          OR LOWER(location) LIKE '%sunnyvale%'
-          OR LOWER(location) LIKE '%santa clara%'
+          OR LOWER(location) LIKE '%oaktown%'
+          OR LOWER(location) LIKE '%east bay%'
           OR LOWER(location) LIKE '%fremont%'
-          OR LOWER(location) LIKE '%redwood city%'
-          OR LOWER(location) LIKE '%san mateo%'
           OR LOWER(location) LIKE '%hayward%'
-          OR LOWER(location) LIKE '%milpitas%'
-          OR LOWER(location) LIKE '%pleasanton%'
-          OR LOWER(location) LIKE '%livermore%'
-          OR LOWER(location) LIKE '%walnut creek%'
-          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%alameda%'
           OR LOWER(location) LIKE '%richmond%'
           OR LOWER(location) LIKE '%emeryville%'
-          OR LOWER(location) LIKE '%foster city%'
-          OR LOWER(location) LIKE '%south san francisco%'
-          OR LOWER(location) LIKE '%ssf%'
+          OR LOWER(location) LIKE '%walnut creek%'
+          OR LOWER(location) LIKE '%concord%'
+          OR LOWER(location) LIKE '%pleasanton%'
+          OR LOWER(location) LIKE '%livermore%'
+          OR LOWER(location) LIKE '%dublin%'
+          OR LOWER(location) LIKE '%san ramon%'
+          OR LOWER(location) LIKE '%danville%'
+          OR LOWER(location) LIKE '%castro valley%'
+          OR LOWER(location) LIKE '%union city%'
+          OR LOWER(location) LIKE '%newark%'
+          -- North Bay / Marin
+          OR LOWER(location) LIKE '%mill valley%'
+          OR LOWER(location) LIKE '%sausalito%'
+          OR LOWER(location) LIKE '%tiburon%'
+          OR LOWER(location) LIKE '%san rafael%'
+          OR LOWER(location) LIKE '%novato%'
+          OR LOWER(location) LIKE '%marin county%'
+          OR LOWER(location) LIKE '%marin%'
+          OR LOWER(location) LIKE '%corte madera%'
+          OR LOWER(location) LIKE '%larkspur%'
         )
         AND linkedin IS NOT NULL
         AND linkedin != ''
