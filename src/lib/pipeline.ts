@@ -215,9 +215,18 @@ async function syncToLegacyTables(
     name: user.name ?? null,
     avatarUrl: user.avatarUrl ?? null,
     totalScore: agg.totalScore,
-    contributionCount: agg.contributionCount ?? 0,
+    // Profile fields - propagate from githubUsers
+    company: user.company ?? null,
+    blog: user.blog ?? null,
+    location: user.location ?? null,
+    email: user.email ?? null,
+    bio: user.bio ?? null,
+    twitterUsername: user.twitterUsername ?? null,
+    hireable: user.hireable ?? false,
     updatedAt: new Date(),
   };
+
+  console.log(`[SYNC] Leaderboard data for ${username}: location="${user.location ?? 'null'}"`);
 
   await db.insert(leaderboard).values(leaderboardData).onConflictDoUpdate({
     target: leaderboard.username,
