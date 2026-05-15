@@ -150,7 +150,8 @@ export async function updateUserScores(username: string, linkedin: string | null
     .orderBy(desc(userRepoScores.repoScore));
 
   if (repoScores.length === 0) {
-    console.log(`[AGGREGATE] No repo scores found for ${username}, skipping user_scores update`);
+    console.log(`[AGGREGATE] No repo scores found for ${username}, syncing profile only`);
+    await syncToLegacyTables({ totalScore: 0 }, username, linkedin);
     return;
   }
 
