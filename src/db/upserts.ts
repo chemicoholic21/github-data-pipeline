@@ -19,6 +19,7 @@ export async function upsertGithubUser(user: User) {
     location: user.location ?? null,
     email: user.email ?? null,
     twitterUsername: user.twitterUsername ?? null,
+    linkedin: user.linkedin ?? null,
     company: user.company ?? null,
     hireable: user.isHireable ?? null,
     createdAt: user.createdAt ? new Date(user.createdAt) : null,
