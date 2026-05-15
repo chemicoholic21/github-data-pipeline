@@ -3,12 +3,13 @@ import {
   fetchUserRepositories, 
   fetchPullRequestsForRepo 
 } from './githubScraper.js';
-import { 
-  upsertGithubUser, 
-  upsertGithubRepo, 
+import {
+  upsertGithubUser,
+  upsertGithubRepo,
   insertPullRequests,
   upsertUserRepoScore
 } from '../db/upserts.js';
+import type { User } from '../types/github.js';
 import { db } from '../db/dbClient.js';
 import { 
   githubUsers,
@@ -28,7 +29,7 @@ import {
 /**
  * STAGE 1: SCRAPE
  */
-export async function scrapeUser(username: string): Promise<void> {
+export async function scrapeUser(username: string): Promise<User> {
   console.log(`\n[SCRAPE][START] User: ${username}`);
 
   try {
@@ -40,7 +41,7 @@ export async function scrapeUser(username: string): Promise<void> {
     console.log(`[SCRAPE] Fetching repositories...`);
     const repos = await fetchUserRepositories(username);
     console.log(`[SCRAPE][REPOS] Found ${repos.length} repositories.`);
-    
+
     for (const repo of repos) {
       await upsertGithubRepo(repo);
     }
@@ -54,7 +55,7 @@ export async function scrapeUser(username: string): Promise<void> {
       try {
         const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name);
         const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
-        
+
         if (userPrs.length > 0) {
           await insertPullRequests(userPrs);
           totalPrsSaved += userPrs.length;
@@ -67,6 +68,7 @@ export async function scrapeUser(username: string): Promise<void> {
     }
 
     console.log(`[SCRAPE][COMPLETE] ✅ Total PRs: ${totalPrsSaved}`);
+    return user;
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[SCRAPE][ERROR] ${errorMsg}`);
@@ -138,7 +140,7 @@ export async function updateUserRepoScores(username: string) {
 /**
  * STAGE 3: AGGREGATE
  */
-export async function updateUserScores(username: string) {
+export async function updateUserScores(username: string, linkedin: string | null = null) {
   console.log(`\n[AGGREGATE][START] User: ${username}`);
 
   const repoScores = await db
@@ -168,13 +170,14 @@ export async function updateUserScores(username: string) {
     set: userScoreData,
   });
 
-  await syncToLegacyTables(userScoreData, username);
+  await syncToLegacyTables(userScoreData, username, linkedin);
   console.log(`[AGGREGATE][COMPLETE] ✅ Score: ${totalScore.toFixed(2)}`);
 }
 
 async function syncToLegacyTables(
   agg: { totalScore: number; contributionCount?: number },
-  username: string
+  username: string,
+  linkedin: string | null = null
 ): Promise<void> {
   const userRows = await db.select().from(githubUsers).where(eq(githubUsers.username, username)).limit(1);
   const user = userRows[0];
@@ -222,7 +225,7 @@ async function syncToLegacyTables(
     email: user.email ?? null,
     bio: user.bio ?? null,
     twitterUsername: user.twitterUsername ?? null,
-    linkedin: user.linkedin ?? null,
+    linkedin: linkedin ?? null,
     hireable: user.hireable ?? false,
     updatedAt: new Date(),
   };
@@ -399,23 +402,23 @@ export async function analyzeUserSkills(username: string) {
 export async function runPipeline(username: string) {
   try {
     console.log(`\n[PIPELINE] Starting for ${username}...`);
-    
+
     console.log(`[PIPELINE] Stage 1: Scraping user data...`);
-    await scrapeUser(username);
+    const scrapedUser = await scrapeUser(username);
     console.log(`[PIPELINE] Stage 1 ✅ Complete`);
-    
+
     console.log(`[PIPELINE] Stage 2: Computing repo scores...`);
     await updateUserRepoScores(username);
     console.log(`[PIPELINE] Stage 2 ✅ Complete`);
-    
+
     console.log(`[PIPELINE] Stage 3: Aggregating scores...`);
-    await updateUserScores(username);
+    await updateUserScores(username, scrapedUser.linkedin ?? null);
     console.log(`[PIPELINE] Stage 3 ✅ Complete`);
 
     console.log(`[PIPELINE] Stage 4: Analyzing skills...`);
     await analyzeUserSkills(username);
     console.log(`[PIPELINE] Stage 4 ✅ Complete`);
-    
+
     console.log(`[PIPELINE] ✅ Pipeline complete for ${username}`);
   } catch (error: any) {
     console.error(`[PIPELINE] ❌ FAILED for ${username}: ${error.message}`);
