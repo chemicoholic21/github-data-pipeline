@@ -222,6 +222,7 @@ async function syncToLegacyTables(
     email: user.email ?? null,
     bio: user.bio ?? null,
     twitterUsername: user.twitterUsername ?? null,
+    linkedin: user.linkedin ?? null,
     hireable: user.hireable ?? false,
     updatedAt: new Date(),
   };

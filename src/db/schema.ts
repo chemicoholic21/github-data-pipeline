@@ -146,6 +146,7 @@ export const githubUsers = pgTable('github_users', {
   location: text('location'),
   email: text('email'),
   twitterUsername: text('twitter_username'),
+  linkedin: text('linkedin'),
   company: text('company'),
   hireable: boolean('hireable'),
   createdAt: timestamp('created_at'),
