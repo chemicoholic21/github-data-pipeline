@@ -224,7 +224,10 @@ const extractLinkedIn = (
   websiteUrl: string | null
 ): string | null => {
   const linkedInAccount = socialAccounts?.find((account) => account.provider === 'LINKEDIN');
-  if (linkedInAccount) return linkedInAccount.url;
+  if (linkedInAccount) {
+    console.log(`[SCRAPER] LinkedIn found via socialAccounts: ${linkedInAccount.url}`);
+    return linkedInAccount.url;
+  }
 
   const linkedinRegex = /(?:linkedin\.com\/in\/|lnkd\.in\/)([a-zA-Z0-9_-]+)/i;
   if (bio) {
@@ -235,6 +238,7 @@ const extractLinkedIn = (
     const match = websiteUrl.match(linkedinRegex);
     if (match) return `https://linkedin.com/in/${match[1]}`;
   }
+  console.log(`[SCRAPER] No LinkedIn found for bio="${bio?.slice(0,80)}" websiteUrl="${websiteUrl}"`);
   return null;
 };
 
