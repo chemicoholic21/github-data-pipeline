@@ -546,6 +546,63 @@ pnpm bulk-discover "San Francisco" 0 1
 | Bulk discover | `pnpm bulk-discover <location>` | Main pipeline — discovers and scores users by location |
 | DB push | `pnpm db:push` | Pushes Drizzle schema to the database |
 | LinkedIn enrich | `pnpm enrich-linkedin` | Enriches leaderboard rows with LinkedIn data via Apify |
+| Populate from cache | `npx tsx src/scripts/populate-leaderboard-from-cache.ts` | Scores cached profiles and populates leaderboard (no API calls) |
+
+---
+
+### Populate Leaderboard from Cache
+
+This script processes cached API responses from the `api_cache` table and populates all intermediate tables and the leaderboard **without making any GitHub API calls**. This is useful when you have many cached profiles that haven't been scored yet.
+
+**What it does:**
+1. Reads all cached GraphQL responses from `api_cache` table
+2. Parses and identifies response types (user profile, user repos, repo PRs)
+3. Populates intermediate tables: `github_users`, `github_repos`, `github_pull_requests`
+4. Runs scoring pipeline stages 2-4 (compute, aggregate, analyze)
+5. Updates `user_repo_scores`, `user_scores`, `analyses`, and `leaderboard` tables
+
+**Usage:**
+```bash
+# Process all cached users
+npx tsx src/scripts/populate-leaderboard-from-cache.ts
+
+# Process a specific user
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
+
+# Dry run (preview only, no database changes)
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run
+
+# Custom batch size for scoring
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=100
+
+# Only populate intermediate tables, skip scoring
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
+```
+
+**Options:**
+| Option | Description |
+|---|---|
+| `--username=<username>` | Process only a specific user |
+| `--dry-run` | Preview what would be processed without making changes |
+| `--batch-size=<n>` | Number of users to process per batch (default: 50) |
+| `--skip-scoring` | Only populate intermediate tables, skip scoring stages |
+| `--help`, `-h` | Show help message |
+
+**Tables populated:**
+- `github_users` — User profiles parsed from cache
+- `github_repos` — Repository data parsed from cache
+- `github_pull_requests` — PR data parsed from cache
+- `user_repo_scores` — Computed per-repo scores (Stage 2)
+- `user_scores` — Aggregated total scores (Stage 3)
+- `analyses` — Skill categorization (Stage 4)
+- `leaderboard` — Final ranked profiles
+- `users` (legacy) — Synced for backward compatibility
+
+**Safety guarantees:**
+- ✅ No GitHub API calls — purely reads from database
+- ✅ No DELETE operations — only INSERT/UPDATE via upserts
+- ✅ Uses existing scoring algorithm — no modifications to core logic
+- ✅ Idempotent — safe to run multiple times
 
 ---
 
