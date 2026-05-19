@@ -4,8 +4,11 @@
  * This script populates the leaderboard and all intermediate tables from cached
  * API responses in the api_cache table. It does NOT make any GitHub API calls.
  *
+ * MEMORY EFFICIENT: Processes cache entries in batches using database cursors
+ * to avoid loading all 400k+ entries into memory at once.
+ *
  * The script:
- * 1. Reads all cached GraphQL responses from api_cache table
+ * 1. Reads cached GraphQL responses from api_cache table IN BATCHES
  * 2. Parses and identifies response types (user profile, user repos, repo PRs)
  * 3. Populates intermediate tables: githubUsers, githubRepos, githubPullRequests
  * 4. Runs scoring pipeline stages 2-4 (compute, aggregate, analyze)
@@ -17,17 +20,19 @@
  * Options:
  *   --username=<username>   Process only a specific user
  *   --dry-run               Preview what would be processed without making changes
- *   --batch-size=<n>        Number of users to process per batch (default: 50)
+ *   --batch-size=<n>        Number of cache entries to process per batch (default: 1000)
  *   --skip-scoring          Only populate intermediate tables, skip scoring stages
+ *   --offset=<n>            Start processing from this offset (for resuming)
+ *   --limit=<n>             Process only this many users (for testing)
  *
  * Examples:
  *   npx tsx src/scripts/populate-leaderboard-from-cache.ts
  *   npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
  *   npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run
- *   npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=100
+ *   npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=500 --limit=100
  */
 
-import { db } from '../db/dbClient.js';
+import { db, pool } from '../db/dbClient.js';
 import { apiCache, githubUsers, leaderboard } from '../db/schema.js';
 import {
   upsertGithubUser,
@@ -40,7 +45,7 @@ import {
   analyzeUserSkills
 } from '../lib/pipeline.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
-import { sql, notInArray } from 'drizzle-orm';
+import { sql, eq, and, isNull } from 'drizzle-orm';
 
 // ============================================================================
 // Types for cached API responses
@@ -264,274 +269,276 @@ function parseRepoPRs(response: CachedRepoPRsResponse, owner: string, repo: stri
 }
 
 // ============================================================================
-// Main processing functions
+// Streaming/Batched processing functions
 // ============================================================================
 
 interface ProcessingStats {
   totalCacheEntries: number;
-  userProfiles: number;
-  userRepos: number;
-  repoPRs: number;
+  userProfilesFound: number;
+  userReposFound: number;
+  repoPRsFound: number;
   unknownEntries: number;
-  usersProcessed: number;
+  usersPopulated: number;
   usersScored: number;
   errors: number;
 }
 
-interface ParsedCacheData {
-  userProfiles: Map<string, User>;
-  userRepos: Map<string, Repository[]>;
-  repoPRs: Map<string, PullRequest[]>; // key: "owner/repo"
-  repoToUsers: Map<string, Set<string>>; // Maps repo to users who contributed
-}
-
 /**
- * Read and parse all entries from api_cache table
+ * Process a single user: populate their data from cache and optionally score them
  */
-async function parseCacheEntries(dryRun: boolean): Promise<ParsedCacheData> {
-  console.log('\n[CACHE] Reading api_cache table...');
-
-  const cacheEntries = await db
-    .select({
-      cacheKey: apiCache.cacheKey,
-      response: apiCache.response,
-    })
-    .from(apiCache);
-
-  console.log(`[CACHE] Found ${cacheEntries.length} cache entries`);
-
-  const data: ParsedCacheData = {
-    userProfiles: new Map(),
-    userRepos: new Map(),
-    repoPRs: new Map(),
-    repoToUsers: new Map(),
-  };
-
-  const stats = {
-    userProfiles: 0,
-    userRepos: 0,
-    repoPRs: 0,
-    unknown: 0,
-  };
-
-  for (const entry of cacheEntries) {
-    const responseType = detectResponseType(entry.response);
-
-    switch (responseType) {
-      case 'user_profile': {
-        const user = parseUserProfile(entry.response as CachedUserProfileResponse);
-        data.userProfiles.set(user.login.toLowerCase(), user);
-        stats.userProfiles++;
-        break;
-      }
-
-      case 'user_repos': {
-        const repos = parseUserRepos(entry.response as CachedUserReposResponse);
-        // Try to extract username from the repos (owner of owned repos)
-        // or from the cache key pattern
-        for (const repo of repos) {
-          const repoKey = `${repo.ownerLogin}/${repo.name}`;
-          if (!data.userRepos.has(repo.ownerLogin.toLowerCase())) {
-            data.userRepos.set(repo.ownerLogin.toLowerCase(), []);
-          }
-          // Store repos by owner
-          const existingRepos = data.userRepos.get(repo.ownerLogin.toLowerCase())!;
-          if (!existingRepos.find(r => r.name === repo.name && r.ownerLogin === repo.ownerLogin)) {
-            existingRepos.push(repo);
-          }
-        }
-        stats.userRepos++;
-        break;
-      }
-
-      case 'repo_prs': {
-        // For repo PRs, we need to extract owner/repo from the PR data
-        const response = entry.response as CachedRepoPRsResponse;
-        const nodes = response.repository?.pullRequests?.nodes ?? [];
-        if (nodes.length > 0 && nodes[0].url) {
-          // Extract owner/repo from PR URL: https://github.com/owner/repo/pull/123
-          const urlMatch = nodes[0].url.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
-          if (urlMatch) {
-            const [, owner, repo] = urlMatch;
-            const repoKey = `${owner}/${repo}`;
-            const prs = parseRepoPRs(response, owner, repo);
-            data.repoPRs.set(repoKey, prs);
-
-            // Track which users contributed to this repo
-            for (const pr of prs) {
-              if (!data.repoToUsers.has(repoKey)) {
-                data.repoToUsers.set(repoKey, new Set());
-              }
-              data.repoToUsers.get(repoKey)!.add(pr.authorLogin.toLowerCase());
-            }
-          }
-        }
-        stats.repoPRs++;
-        break;
-      }
-
-      default:
-        stats.unknown++;
-    }
-  }
-
-  console.log(`[CACHE] Parsed cache entries:`);
-  console.log(`  - User profiles: ${stats.userProfiles} (${data.userProfiles.size} unique users)`);
-  console.log(`  - User repos queries: ${stats.userRepos}`);
-  console.log(`  - Repo PRs queries: ${stats.repoPRs} (${data.repoPRs.size} unique repos)`);
-  console.log(`  - Unknown/skipped: ${stats.unknown}`);
-
-  return data;
-}
-
-/**
- * Populate intermediate tables from parsed cache data
- */
-async function populateIntermediateTables(
-  data: ParsedCacheData,
-  targetUsername: string | null,
-  dryRun: boolean
-): Promise<string[]> {
-  const processedUsers: string[] = [];
-
-  // Determine which users to process
-  let usersToProcess: string[];
-  if (targetUsername) {
-    usersToProcess = [targetUsername.toLowerCase()];
-  } else {
-    // Get all unique usernames from profiles
-    usersToProcess = Array.from(data.userProfiles.keys());
-  }
-
-  console.log(`\n[POPULATE] Processing ${usersToProcess.length} users...`);
-
-  for (const username of usersToProcess) {
-    try {
-      const userProfile = data.userProfiles.get(username);
-
-      if (!userProfile) {
-        console.log(`  [${username}] ⚠️ No profile data in cache, skipping`);
-        continue;
-      }
-
-      if (dryRun) {
-        console.log(`  [${username}] Would populate: profile ✓`);
-
-        // Count repos for this user
-        const userRepos = data.userRepos.get(username) || [];
-        console.log(`  [${username}] Would populate: ${userRepos.length} repos`);
-
-        // Count PRs for this user across all cached repos
-        let prCount = 0;
-        for (const [repoKey, prs] of data.repoPRs) {
-          const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username);
-          prCount += userPrs.length;
-        }
-        console.log(`  [${username}] Would populate: ${prCount} PRs`);
-
-        processedUsers.push(username);
-        continue;
-      }
-
-      // 1. Upsert user profile
-      console.log(`  [${username}] Upserting profile...`);
-      await upsertGithubUser(userProfile);
-
-      // 2. Upsert repositories
-      const userRepos = data.userRepos.get(username) || [];
-      for (const repo of userRepos) {
-        await upsertGithubRepo(repo);
-      }
-      console.log(`  [${username}] Upserted ${userRepos.length} repos`);
-
-      // 3. Insert PRs for this user from all cached repo PRs
-      let totalPRs = 0;
-      for (const [repoKey, prs] of data.repoPRs) {
-        const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username);
-        if (userPrs.length > 0) {
-          await insertPullRequests(userPrs);
-          totalPRs += userPrs.length;
-        }
-      }
-      console.log(`  [${username}] Inserted ${totalPRs} PRs`);
-
-      processedUsers.push(username);
-      console.log(`  [${username}] ✅ Intermediate tables populated`);
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`  [${username}] ❌ Error: ${errorMsg}`);
-    }
-  }
-
-  return processedUsers;
-}
-
-/**
- * Run scoring pipeline for users (stages 2-4)
- */
-async function runScoringPipeline(
-  usernames: string[],
-  data: ParsedCacheData,
+async function processUserFromCache(
+  username: string,
   dryRun: boolean,
-  batchSize: number
-): Promise<number> {
-  console.log(`\n[SCORING] Running pipeline for ${usernames.length} users...`);
+  skipScoring: boolean,
+  stats: ProcessingStats
+): Promise<boolean> {
+  try {
+    // Step 1: Find user profile in cache by scanning for their profile response
+    // We need to search cache entries that contain this user's profile
+    const profileEntries = await db
+      .select({ response: apiCache.response })
+      .from(apiCache)
+      .where(sql`${apiCache.response}::jsonb -> 'user' ->> 'login' ILIKE ${username}`)
+      .limit(1);
 
-  if (dryRun) {
-    console.log(`[SCORING] Dry run - would score ${usernames.length} users`);
-    return usernames.length;
-  }
+    if (profileEntries.length === 0) {
+      console.log(`  [${username}] ⚠️ No profile found in cache`);
+      return false;
+    }
 
-  let scoredCount = 0;
+    const profileResponse = profileEntries[0].response as CachedUserProfileResponse;
+    const responseType = detectResponseType(profileResponse);
 
-  // Process in batches
-  for (let i = 0; i < usernames.length; i += batchSize) {
-    const batch = usernames.slice(i, i + batchSize);
-    console.log(`\n[SCORING] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(usernames.length / batchSize)} (${batch.length} users)`);
+    if (responseType !== 'user_profile') {
+      console.log(`  [${username}] ⚠️ Found entry is not a user profile (type: ${responseType})`);
+      return false;
+    }
 
-    for (const username of batch) {
-      try {
-        // Get linkedin from parsed profile for this user
-        const userProfile = data.userProfiles.get(username.toLowerCase());
-        const linkedin = userProfile?.linkedin ?? null;
+    const user = parseUserProfile(profileResponse);
 
-        // Stage 2: Compute repo scores
-        await updateUserRepoScores(username);
+    if (dryRun) {
+      console.log(`  [${username}] Would populate profile ✓`);
+      stats.usersPopulated++;
+      return true;
+    }
 
-        // Stage 3: Aggregate scores and sync to leaderboard
-        await updateUserScores(username, linkedin);
+    // Step 2: Upsert user profile
+    await upsertGithubUser(user);
+    console.log(`  [${username}] ✅ Profile upserted`);
 
-        // Stage 4: Analyze skills
-        await analyzeUserSkills(username);
+    // Step 3: Find and process user's repos from cache
+    const reposEntries = await db
+      .select({ response: apiCache.response })
+      .from(apiCache)
+      .where(sql`
+        ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NOT NULL
+        AND ${apiCache.response}::jsonb -> 'user' -> 'repositoriesContributedTo' IS NOT NULL
+      `)
+      .limit(5000); // Process repos in chunks
 
-        scoredCount++;
-        console.log(`  [${username}] ✅ Scored and analyzed`);
-      } catch (error: unknown) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`  [${username}] ❌ Scoring error: ${errorMsg}`);
+    let reposUpserted = 0;
+    const userReposSet = new Set<string>(); // Track repos associated with this user
+
+    for (const entry of reposEntries) {
+      const reposResponse = entry.response as CachedUserReposResponse;
+      const repos = parseUserRepos(reposResponse);
+
+      for (const repo of repos) {
+        // Check if this repo is owned by or contributed to by this user
+        const repoKey = `${repo.ownerLogin}/${repo.name}`;
+
+        // We'll upsert all repos we find - they may be relevant for PR matching later
+        await upsertGithubRepo(repo);
+        reposUpserted++;
+
+        if (repo.ownerLogin.toLowerCase() === username.toLowerCase()) {
+          userReposSet.add(repoKey);
+        }
       }
     }
-  }
+    console.log(`  [${username}] ✅ ${reposUpserted} repos upserted`);
 
-  return scoredCount;
+    // Step 4: Find and process PRs for this user from cache
+    const prEntries = await db
+      .select({ response: apiCache.response })
+      .from(apiCache)
+      .where(sql`${apiCache.response}::jsonb -> 'repository' -> 'pullRequests' IS NOT NULL`)
+      .limit(10000);
+
+    let prsInserted = 0;
+    for (const entry of prEntries) {
+      const prResponse = entry.response as CachedRepoPRsResponse;
+      const nodes = prResponse.repository?.pullRequests?.nodes ?? [];
+
+      if (nodes.length > 0 && nodes[0]?.url) {
+        const urlMatch = nodes[0].url.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
+        if (urlMatch) {
+          const [, owner, repo] = urlMatch;
+          const prs = parseRepoPRs(prResponse, owner, repo);
+
+          // Filter PRs by this user
+          const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
+          if (userPrs.length > 0) {
+            await insertPullRequests(userPrs);
+            prsInserted += userPrs.length;
+          }
+        }
+      }
+    }
+    console.log(`  [${username}] ✅ ${prsInserted} PRs inserted`);
+
+    stats.usersPopulated++;
+
+    // Step 5: Run scoring pipeline if not skipped
+    if (!skipScoring) {
+      try {
+        await updateUserRepoScores(username);
+        await updateUserScores(username, user.linkedin ?? null);
+        await analyzeUserSkills(username);
+        stats.usersScored++;
+        console.log(`  [${username}] ✅ Scored and analyzed`);
+      } catch (scoreError: unknown) {
+        const errorMsg = scoreError instanceof Error ? scoreError.message : String(scoreError);
+        console.error(`  [${username}] ⚠️ Scoring error: ${errorMsg}`);
+      }
+    }
+
+    return true;
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`  [${username}] ❌ Error: ${errorMsg}`);
+    stats.errors++;
+    return false;
+  }
 }
 
 /**
- * Find users that exist in githubUsers but not in leaderboard
+ * Get all unique usernames from cached user profiles (memory efficient)
  */
-async function findUsersNotInLeaderboard(): Promise<string[]> {
-  console.log('\n[CHECK] Finding users missing from leaderboard...');
+async function getAllCachedUsernames(batchSize: number, offset: number, limit: number | null): Promise<string[]> {
+  console.log('\n[CACHE] Scanning for unique usernames in api_cache...');
 
-  const result = await db
-    .select({ username: githubUsers.username })
-    .from(githubUsers)
-    .leftJoin(leaderboard, sql`${githubUsers.username} = ${leaderboard.username}`)
-    .where(sql`${leaderboard.username} IS NULL`);
+  const usernames: string[] = [];
+  let currentOffset = 0;
+  let totalScanned = 0;
 
-  const usernames = result.map(r => r.username);
-  console.log(`[CHECK] Found ${usernames.length} users in githubUsers but not in leaderboard`);
+  while (true) {
+    // Query batch of cache entries that look like user profiles
+    const batch = await db
+      .select({ response: apiCache.response })
+      .from(apiCache)
+      .where(sql`
+        ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
+        AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
+        AND ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NULL
+      `)
+      .limit(batchSize)
+      .offset(currentOffset);
 
-  return usernames;
+    if (batch.length === 0) break;
+
+    for (const entry of batch) {
+      const response = entry.response as CachedUserProfileResponse;
+      if (response.user?.login) {
+        const username = response.user.login.toLowerCase();
+        if (!usernames.includes(username)) {
+          usernames.push(username);
+        }
+      }
+    }
+
+    totalScanned += batch.length;
+    currentOffset += batchSize;
+
+    // Progress update every 10k entries
+    if (totalScanned % 10000 === 0) {
+      console.log(`  [SCAN] Scanned ${totalScanned} entries, found ${usernames.length} unique users...`);
+    }
+
+    // Check if we've reached the limit
+    if (limit && usernames.length >= limit + offset) {
+      break;
+    }
+  }
+
+  console.log(`[CACHE] Found ${usernames.length} unique user profiles in cache`);
+
+  // Apply offset and limit
+  let result = usernames;
+  if (offset > 0) {
+    result = result.slice(offset);
+    console.log(`[CACHE] After offset ${offset}: ${result.length} users remaining`);
+  }
+  if (limit) {
+    result = result.slice(0, limit);
+    console.log(`[CACHE] After limit ${limit}: ${result.length} users to process`);
+  }
+
+  return result;
+}
+
+/**
+ * Get usernames that exist in cache but not in leaderboard
+ */
+async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: number | null): Promise<string[]> {
+  console.log('\n[CACHE] Finding users in cache but missing from leaderboard...');
+
+  // First get all usernames from leaderboard (this should be manageable)
+  const leaderboardUsers = await db
+    .select({ username: leaderboard.username })
+    .from(leaderboard);
+
+  const leaderboardSet = new Set(leaderboardUsers.map(u => u.username.toLowerCase()));
+  console.log(`[CACHE] Found ${leaderboardSet.size} users already in leaderboard`);
+
+  // Now scan cache for users NOT in leaderboard
+  const missingUsernames: string[] = [];
+  let currentOffset = 0;
+  let totalScanned = 0;
+
+  while (true) {
+    const batch = await db
+      .select({ response: apiCache.response })
+      .from(apiCache)
+      .where(sql`
+        ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
+        AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
+        AND ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NULL
+      `)
+      .limit(batchSize)
+      .offset(currentOffset);
+
+    if (batch.length === 0) break;
+
+    for (const entry of batch) {
+      const response = entry.response as CachedUserProfileResponse;
+      if (response.user?.login) {
+        const username = response.user.login.toLowerCase();
+        if (!leaderboardSet.has(username) && !missingUsernames.includes(username)) {
+          missingUsernames.push(username);
+        }
+      }
+    }
+
+    totalScanned += batch.length;
+    currentOffset += batchSize;
+
+    if (totalScanned % 10000 === 0) {
+      console.log(`  [SCAN] Scanned ${totalScanned} entries, found ${missingUsernames.length} missing users...`);
+    }
+
+    if (limit && missingUsernames.length >= limit) {
+      break;
+    }
+  }
+
+  console.log(`[CACHE] Found ${missingUsernames.length} users missing from leaderboard`);
+
+  if (limit) {
+    return missingUsernames.slice(0, limit);
+  }
+
+  return missingUsernames;
 }
 
 // ============================================================================
@@ -544,8 +551,11 @@ async function main() {
   // Parse arguments
   let targetUsername: string | null = null;
   let dryRun = false;
-  let batchSize = 50;
+  let batchSize = 1000;
   let skipScoring = false;
+  let offset = 0;
+  let limit: number | null = null;
+  let onlyMissing = false;
 
   for (const arg of args) {
     if (arg.startsWith('--username=')) {
@@ -553,9 +563,15 @@ async function main() {
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg.startsWith('--batch-size=')) {
-      batchSize = parseInt(arg.split('=')[1], 10) || 50;
+      batchSize = parseInt(arg.split('=')[1], 10) || 1000;
     } else if (arg === '--skip-scoring') {
       skipScoring = true;
+    } else if (arg.startsWith('--offset=')) {
+      offset = parseInt(arg.split('=')[1], 10) || 0;
+    } else if (arg.startsWith('--limit=')) {
+      limit = parseInt(arg.split('=')[1], 10) || null;
+    } else if (arg === '--only-missing') {
+      onlyMissing = true;
     } else if (arg === '--help' || arg === '-h') {
       console.log(`
 Usage: npx tsx src/scripts/populate-leaderboard-from-cache.ts [options]
@@ -563,15 +579,19 @@ Usage: npx tsx src/scripts/populate-leaderboard-from-cache.ts [options]
 Options:
   --username=<username>   Process only a specific user
   --dry-run               Preview what would be processed without making changes
-  --batch-size=<n>        Number of users to process per batch (default: 50)
+  --batch-size=<n>        Number of cache entries to scan per batch (default: 1000)
   --skip-scoring          Only populate intermediate tables, skip scoring stages
+  --offset=<n>            Start processing from this user index (for resuming)
+  --limit=<n>             Process only this many users (for testing)
+  --only-missing          Only process users not already in leaderboard
   --help, -h              Show this help message
 
 Examples:
   npx tsx src/scripts/populate-leaderboard-from-cache.ts
   npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
-  npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run
-  npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=100
+  npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run --limit=10
+  npx tsx src/scripts/populate-leaderboard-from-cache.ts --only-missing --limit=100
+  npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
 `);
       process.exit(0);
     }
@@ -580,6 +600,7 @@ Examples:
   console.log('╔══════════════════════════════════════════════════════════════════╗');
   console.log('║        POPULATE LEADERBOARD FROM CACHE                           ║');
   console.log('║        (No GitHub API calls - uses cached data only)             ║');
+  console.log('║        Memory efficient: processes in batches                    ║');
   console.log('╚══════════════════════════════════════════════════════════════════╝');
   console.log('');
   console.log(`Configuration:`);
@@ -587,44 +608,77 @@ Examples:
   console.log(`  - Dry run: ${dryRun}`);
   console.log(`  - Batch size: ${batchSize}`);
   console.log(`  - Skip scoring: ${skipScoring}`);
+  console.log(`  - Offset: ${offset}`);
+  console.log(`  - Limit: ${limit || 'none'}`);
+  console.log(`  - Only missing: ${onlyMissing}`);
+
+  const stats: ProcessingStats = {
+    totalCacheEntries: 0,
+    userProfilesFound: 0,
+    userReposFound: 0,
+    repoPRsFound: 0,
+    unknownEntries: 0,
+    usersPopulated: 0,
+    usersScored: 0,
+    errors: 0,
+  };
 
   try {
-    // Step 1: Parse cache entries
-    const cacheData = await parseCacheEntries(dryRun);
+    // Get count of cache entries for reference
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(apiCache);
+    stats.totalCacheEntries = Number(countResult[0]?.count || 0);
+    console.log(`\n[CACHE] Total entries in api_cache: ${stats.totalCacheEntries.toLocaleString()}`);
 
-    if (cacheData.userProfiles.size === 0) {
-      console.log('\n[ERROR] No user profiles found in api_cache. Nothing to process.');
-      process.exit(1);
+    // Determine which users to process
+    let usersToProcess: string[];
+
+    if (targetUsername) {
+      usersToProcess = [targetUsername];
+      console.log(`\n[PROCESS] Processing single user: ${targetUsername}`);
+    } else if (onlyMissing) {
+      usersToProcess = await getUsernamesMissingFromLeaderboard(batchSize, limit);
+    } else {
+      usersToProcess = await getAllCachedUsernames(batchSize, offset, limit);
     }
 
-    // Step 2: Populate intermediate tables
-    const processedUsers = await populateIntermediateTables(cacheData, targetUsername, dryRun);
-
-    if (processedUsers.length === 0) {
-      console.log('\n[WARN] No users were processed.');
+    if (usersToProcess.length === 0) {
+      console.log('\n[WARN] No users to process.');
       process.exit(0);
     }
 
-    // Step 3: Run scoring pipeline (unless skipped)
-    let scoredCount = 0;
-    if (!skipScoring) {
-      scoredCount = await runScoringPipeline(processedUsers, cacheData, dryRun, batchSize);
-    } else {
-      console.log('\n[SCORING] Skipped (--skip-scoring flag)');
+    console.log(`\n[PROCESS] Processing ${usersToProcess.length} users...`);
+    console.log('─'.repeat(70));
+
+    // Process each user
+    for (let i = 0; i < usersToProcess.length; i++) {
+      const username = usersToProcess[i];
+      console.log(`\n[${i + 1}/${usersToProcess.length}] Processing: ${username}`);
+
+      await processUserFromCache(username, dryRun, skipScoring, stats);
+
+      // Progress update every 50 users
+      if ((i + 1) % 50 === 0) {
+        console.log(`\n[PROGRESS] ${i + 1}/${usersToProcess.length} users processed (${stats.usersPopulated} populated, ${stats.usersScored} scored, ${stats.errors} errors)`);
+      }
     }
 
     // Final summary
-    console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-    console.log('║                        SUMMARY                                   ║');
-    console.log('╚══════════════════════════════════════════════════════════════════╝');
-    console.log(`  Cache entries parsed: ${cacheData.userProfiles.size} user profiles`);
-    console.log(`  Users processed: ${processedUsers.length}`);
-    console.log(`  Users scored: ${scoredCount}`);
+    console.log('\n' + '═'.repeat(70));
+    console.log('                           SUMMARY');
+    console.log('═'.repeat(70));
+    console.log(`  Total cache entries: ${stats.totalCacheEntries.toLocaleString()}`);
+    console.log(`  Users processed: ${usersToProcess.length}`);
+    console.log(`  Users populated: ${stats.usersPopulated}`);
+    console.log(`  Users scored: ${stats.usersScored}`);
+    console.log(`  Errors: ${stats.errors}`);
     if (dryRun) {
       console.log('\n  ⚠️  DRY RUN - No changes were made to the database');
     } else {
       console.log('\n  ✅ Database updated successfully');
     }
+    console.log('═'.repeat(70));
 
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);

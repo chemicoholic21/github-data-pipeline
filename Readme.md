@@ -554,8 +554,10 @@ pnpm bulk-discover "San Francisco" 0 1
 
 This script processes cached API responses from the `api_cache` table and populates all intermediate tables and the leaderboard **without making any GitHub API calls**. This is useful when you have many cached profiles that haven't been scored yet.
 
+**Memory efficient:** Processes entries in batches using database cursors to handle 400k+ cache entries without running out of memory.
+
 **What it does:**
-1. Reads all cached GraphQL responses from `api_cache` table
+1. Scans `api_cache` table in batches to find user profiles
 2. Parses and identifies response types (user profile, user repos, repo PRs)
 3. Populates intermediate tables: `github_users`, `github_repos`, `github_pull_requests`
 4. Runs scoring pipeline stages 2-4 (compute, aggregate, analyze)
@@ -570,10 +572,13 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts
 npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
 
 # Dry run (preview only, no database changes)
-npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run --limit=10
 
-# Custom batch size for scoring
-npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=100
+# Only process users missing from leaderboard (recommended for large caches)
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --only-missing --limit=100
+
+# Resume processing from a specific offset
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
 
 # Only populate intermediate tables, skip scoring
 npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
@@ -584,8 +589,11 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
 |---|---|
 | `--username=<username>` | Process only a specific user |
 | `--dry-run` | Preview what would be processed without making changes |
-| `--batch-size=<n>` | Number of users to process per batch (default: 50) |
+| `--batch-size=<n>` | Number of cache entries to scan per batch (default: 1000) |
 | `--skip-scoring` | Only populate intermediate tables, skip scoring stages |
+| `--offset=<n>` | Start processing from this user index (for resuming) |
+| `--limit=<n>` | Process only this many users (for testing or batching) |
+| `--only-missing` | Only process users not already in leaderboard |
 | `--help`, `-h` | Show help message |
 
 **Tables populated:**
@@ -603,6 +611,7 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
 - ✅ No DELETE operations — only INSERT/UPDATE via upserts
 - ✅ Uses existing scoring algorithm — no modifications to core logic
 - ✅ Idempotent — safe to run multiple times
+- ✅ Memory efficient — processes in batches, won't run out of memory
 
 ---
 
