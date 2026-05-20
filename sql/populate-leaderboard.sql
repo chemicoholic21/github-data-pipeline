@@ -37,7 +37,7 @@ INSERT INTO leaderboard (
   hireable,
   updated_at
 )
-SELECT
+SELECT DISTINCT ON (LOWER(u.username))
   u.username,
   u.name,
   u.avatar_url,
@@ -59,6 +59,7 @@ SELECT
   NOW()
 FROM github_users u
 LEFT JOIN analyses a ON LOWER(a.username) = LOWER(u.username)
+ORDER BY LOWER(u.username), u.updated_at DESC NULLS LAST
 ON CONFLICT (username) DO UPDATE SET
   name = EXCLUDED.name,
   avatar_url = EXCLUDED.avatar_url,
