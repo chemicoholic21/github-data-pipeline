@@ -8,11 +8,6 @@
 --   pnpm run sql:populate-analyses
 --   OR run directly in SQL editor
 --
--- What it does:
---   1. Computes category scores (AI, Backend, Frontend, DevOps, Data)
---   2. Extracts top repos, skills, and languages per user
---   3. Upserts into analyses table
---
 -- Performance: ~72,000 users in ~1-2 minutes (vs hours sequential)
 -- ============================================================
 
@@ -21,6 +16,7 @@ SELECT 'Before: ' || COUNT(*)::text || ' rows in analyses' AS status FROM analys
 
 -- ============================================================
 -- STEP 1: Create temporary table with repo categorization
+-- Note: topics is TEXT[] (array), not JSONB
 -- ============================================================
 DROP TABLE IF EXISTS tmp_repo_categories;
 
@@ -32,29 +28,29 @@ SELECT
   r.total_prs,
   r.primary_language,
   r.topics,
-  -- Categorize based on topics and language
+  -- Categorize based on topics (TEXT[] array) and language
   CASE WHEN (
-    r.topics::text ILIKE ANY(ARRAY['%ai%', '%ml%', '%machine-learning%', '%deep-learning%', '%neural%', '%tensorflow%', '%pytorch%', '%nlp%', '%gpt%', '%llm%', '%langchain%', '%huggingface%'])
+    EXISTS (SELECT 1 FROM unnest(r.topics) t WHERE t ILIKE ANY(ARRAY['%ai%', '%ml%', '%machine-learning%', '%deep-learning%', '%neural%', '%tensorflow%', '%pytorch%', '%nlp%', '%gpt%', '%llm%', '%langchain%', '%huggingface%']))
     OR r.primary_language IN ('Python', 'Julia', 'R')
   ) THEN true ELSE false END AS is_ai,
 
   CASE WHEN (
-    r.topics::text ILIKE ANY(ARRAY['%backend%', '%api%', '%server%', '%nodejs%', '%express%', '%django%', '%fastapi%', '%graphql%', '%database%', '%sql%', '%mongodb%'])
+    EXISTS (SELECT 1 FROM unnest(r.topics) t WHERE t ILIKE ANY(ARRAY['%backend%', '%api%', '%server%', '%nodejs%', '%express%', '%django%', '%fastapi%', '%graphql%', '%database%', '%sql%', '%mongodb%']))
     OR r.primary_language IN ('Java', 'Go', 'Rust', 'Ruby', 'PHP', 'C#', 'Scala', 'Kotlin')
   ) THEN true ELSE false END AS is_backend,
 
   CASE WHEN (
-    r.topics::text ILIKE ANY(ARRAY['%frontend%', '%react%', '%vue%', '%angular%', '%svelte%', '%nextjs%', '%nuxt%', '%tailwind%', '%ui%', '%ux%', '%web%'])
+    EXISTS (SELECT 1 FROM unnest(r.topics) t WHERE t ILIKE ANY(ARRAY['%frontend%', '%react%', '%vue%', '%angular%', '%svelte%', '%nextjs%', '%nuxt%', '%tailwind%', '%ui%', '%ux%', '%web%']))
     OR r.primary_language IN ('JavaScript', 'TypeScript', 'CSS', 'HTML')
   ) THEN true ELSE false END AS is_frontend,
 
   CASE WHEN (
-    r.topics::text ILIKE ANY(ARRAY['%devops%', '%docker%', '%kubernetes%', '%k8s%', '%terraform%', '%aws%', '%gcp%', '%azure%', '%ci-cd%', '%github-actions%', '%jenkins%'])
+    EXISTS (SELECT 1 FROM unnest(r.topics) t WHERE t ILIKE ANY(ARRAY['%devops%', '%docker%', '%kubernetes%', '%k8s%', '%terraform%', '%aws%', '%gcp%', '%azure%', '%ci-cd%', '%github-actions%', '%jenkins%']))
     OR r.primary_language IN ('Shell', 'HCL', 'Dockerfile')
   ) THEN true ELSE false END AS is_devops,
 
   CASE WHEN (
-    r.topics::text ILIKE ANY(ARRAY['%data%', '%analytics%', '%data-science%', '%pandas%', '%spark%', '%hadoop%', '%snowflake%', '%dbt%', '%etl%', '%warehouse%', '%bigquery%'])
+    EXISTS (SELECT 1 FROM unnest(r.topics) t WHERE t ILIKE ANY(ARRAY['%data%', '%analytics%', '%data-science%', '%pandas%', '%spark%', '%hadoop%', '%snowflake%', '%dbt%', '%etl%', '%warehouse%', '%bigquery%']))
     OR r.primary_language IN ('SQL', 'R')
   ) THEN true ELSE false END AS is_data,
 
@@ -77,72 +73,19 @@ WHERE pr.state = 'MERGED'
 GROUP BY pr.username, pr.repo_name;
 
 -- ============================================================
--- STEP 3: Compute scores per user
+-- STEP 3: Compute scores per user (simplified)
 -- ============================================================
 DROP TABLE IF EXISTS tmp_user_scores;
 
 CREATE TEMP TABLE tmp_user_scores AS
 SELECT
   u.username,
-  -- Category scores (star_score + pr_count * 5, distributed by category)
-  COALESCE(SUM(
-    CASE WHEN rc.is_ai THEN (rc.star_score + COALESCE(pc.pr_count, 0) * 5) /
-      NULLIF(
-        (CASE WHEN rc.is_ai THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_backend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_frontend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_devops THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_data THEN 1 ELSE 0 END), 0)
-    ELSE 0 END
-  ), 0)::real AS ai_score,
-
-  COALESCE(SUM(
-    CASE WHEN rc.is_backend THEN (rc.star_score + COALESCE(pc.pr_count, 0) * 5) /
-      NULLIF(
-        (CASE WHEN rc.is_ai THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_backend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_frontend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_devops THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_data THEN 1 ELSE 0 END), 0)
-    ELSE 0 END
-  ), 0)::real AS backend_score,
-
-  COALESCE(SUM(
-    CASE WHEN rc.is_frontend THEN (rc.star_score + COALESCE(pc.pr_count, 0) * 5) /
-      NULLIF(
-        (CASE WHEN rc.is_ai THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_backend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_frontend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_devops THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_data THEN 1 ELSE 0 END), 0)
-    ELSE 0 END
-  ), 0)::real AS frontend_score,
-
-  COALESCE(SUM(
-    CASE WHEN rc.is_devops THEN (rc.star_score + COALESCE(pc.pr_count, 0) * 5) /
-      NULLIF(
-        (CASE WHEN rc.is_ai THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_backend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_frontend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_devops THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_data THEN 1 ELSE 0 END), 0)
-    ELSE 0 END
-  ), 0)::real AS devops_score,
-
-  COALESCE(SUM(
-    CASE WHEN rc.is_data THEN (rc.star_score + COALESCE(pc.pr_count, 0) * 5) /
-      NULLIF(
-        (CASE WHEN rc.is_ai THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_backend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_frontend THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_devops THEN 1 ELSE 0 END +
-         CASE WHEN rc.is_data THEN 1 ELSE 0 END), 0)
-    ELSE 0 END
-  ), 0)::real AS data_score,
-
-  -- Total contribution count
+  COALESCE(SUM(CASE WHEN rc.is_ai THEN rc.star_score + COALESCE(pc.pr_count, 0) * 5 ELSE 0 END), 0)::real AS ai_score,
+  COALESCE(SUM(CASE WHEN rc.is_backend THEN rc.star_score + COALESCE(pc.pr_count, 0) * 5 ELSE 0 END), 0)::real AS backend_score,
+  COALESCE(SUM(CASE WHEN rc.is_frontend THEN rc.star_score + COALESCE(pc.pr_count, 0) * 5 ELSE 0 END), 0)::real AS frontend_score,
+  COALESCE(SUM(CASE WHEN rc.is_devops THEN rc.star_score + COALESCE(pc.pr_count, 0) * 5 ELSE 0 END), 0)::real AS devops_score,
+  COALESCE(SUM(CASE WHEN rc.is_data THEN rc.star_score + COALESCE(pc.pr_count, 0) * 5 ELSE 0 END), 0)::real AS data_score,
   COALESCE(SUM(pc.pr_count), 0)::int AS contribution_count
-
 FROM github_users u
 LEFT JOIN tmp_repo_categories rc ON rc.owner_login = u.username
 LEFT JOIN tmp_user_pr_counts pc ON pc.username = u.username
@@ -157,27 +100,22 @@ DROP TABLE IF EXISTS tmp_user_top_repos;
 CREATE TEMP TABLE tmp_user_top_repos AS
 SELECT
   username,
-  jsonb_agg(
-    jsonb_build_object(
-      'name', repo_name,
-      'owner', owner_login,
-      'stars', stars,
-      'score', repo_score
-    ) ORDER BY repo_score DESC
-  ) FILTER (WHERE rn <= 5) AS top_repos_json
+  jsonb_agg(repo_data ORDER BY repo_score DESC) FILTER (WHERE rn <= 5) AS top_repos_json
 FROM (
   SELECT
     u.username,
-    rc.repo_name,
-    rc.owner_login,
-    rc.stars,
+    jsonb_build_object(
+      'name', rc.repo_name,
+      'owner', rc.owner_login,
+      'stars', rc.stars,
+      'score', (rc.star_score + COALESCE(pc.pr_count, 0) * 5)::real
+    ) AS repo_data,
     (rc.star_score + COALESCE(pc.pr_count, 0) * 5)::real AS repo_score,
     ROW_NUMBER() OVER (PARTITION BY u.username ORDER BY (rc.star_score + COALESCE(pc.pr_count, 0) * 5) DESC) AS rn
   FROM github_users u
-  LEFT JOIN tmp_repo_categories rc ON rc.owner_login = u.username
+  INNER JOIN tmp_repo_categories rc ON rc.owner_login = u.username
   LEFT JOIN tmp_user_pr_counts pc ON pc.username = u.username
     AND pc.repo_name = rc.owner_login || '/' || rc.repo_name
-  WHERE rc.repo_name IS NOT NULL
 ) ranked
 GROUP BY username;
 
@@ -188,13 +126,9 @@ DROP TABLE IF EXISTS tmp_user_languages;
 
 CREATE TEMP TABLE tmp_user_languages AS
 SELECT
-  u.username,
-  jsonb_object_agg(
-    r.primary_language,
-    lang_count
-  ) FILTER (WHERE r.primary_language IS NOT NULL) AS languages_json
-FROM github_users u
-LEFT JOIN (
+  owner_login AS username,
+  jsonb_object_agg(primary_language, lang_count) AS languages_json
+FROM (
   SELECT
     owner_login,
     primary_language,
@@ -202,28 +136,27 @@ LEFT JOIN (
   FROM github_repos
   WHERE primary_language IS NOT NULL
   GROUP BY owner_login, primary_language
-) r ON r.owner_login = u.username
-GROUP BY u.username;
+) lang_stats
+GROUP BY owner_login;
 
 -- ============================================================
 -- STEP 6: Extract unique skills from topics (as JSON array)
+-- Note: topics is TEXT[] array, use unnest
 -- ============================================================
 DROP TABLE IF EXISTS tmp_user_skills;
 
 CREATE TEMP TABLE tmp_user_skills AS
 SELECT
-  u.username,
-  (
-    SELECT jsonb_agg(DISTINCT topic)
-    FROM (
-      SELECT jsonb_array_elements_text(r.topics) AS topic
-      FROM github_repos r
-      WHERE r.owner_login = u.username
-        AND r.topics IS NOT NULL
-      LIMIT 10
-    ) topics_expanded
-  ) AS unique_skills_json
-FROM github_users u;
+  owner_login AS username,
+  jsonb_agg(DISTINCT topic) AS unique_skills_json
+FROM (
+  SELECT
+    r.owner_login,
+    unnest(r.topics) AS topic
+  FROM github_repos r
+  WHERE r.topics IS NOT NULL AND array_length(r.topics, 1) > 0
+) expanded
+GROUP BY owner_login;
 
 -- ============================================================
 -- STEP 7: Final upsert into analyses
