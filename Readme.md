@@ -553,14 +553,14 @@ pnpm bulk-discover "San Francisco" 0 1
 | Bulk discover | `pnpm bulk-discover <location>` | Main pipeline — discovers and scores users by location |
 | DB push | `pnpm db:push` | Pushes Drizzle schema to the database |
 | LinkedIn enrich | `pnpm enrich-linkedin` | Enriches leaderboard rows with LinkedIn data via Apify |
-<<<<<<< HEAD
 | **SQL runner** | `pnpm sql <script>` | Runs a SQL file from the `sql/` directory |
-| **Populate leaderboard** | `pnpm sql:populate-leaderboard` | Bulk populates leaderboard from github_users + analyses |
-| **Populate analyses** | `pnpm sql:populate-analyses` | Bulk computes skill scores for all users |
+| **Populate leaderboard (SQL)** | `pnpm sql:populate-leaderboard` | Bulk populates leaderboard (~30s for 72K users) |
+| **Populate analyses (SQL)** | `pnpm sql:populate-analyses` | Bulk computes skill scores (~1-2 min for 72K users) |
+| Populate from cache (TS) | `npx tsx src/scripts/populate-leaderboard-from-cache.ts` | Sequential processing from cache (slower, more options) |
 
 ---
 
-## Bulk SQL Operations
+## Bulk SQL Operations (Recommended)
 
 For large-scale data operations, the pipeline includes optimized SQL scripts that run entirely in PostgreSQL, avoiding Node.js round-trips. These are **~1000x faster** than equivalent TypeScript loops.
 
@@ -568,14 +568,14 @@ For large-scale data operations, the pipeline includes optimized SQL scripts tha
 
 | Script | File | Description | Performance |
 |--------|------|-------------|-------------|
-| `populate-leaderboard` | `sql/populate-leaderboard.sql` | Joins `github_users` + `analyses` → `leaderboard` | ~30s for 72K users |
-| `populate-analyses` | `sql/populate-analyses.sql` | Computes skill scores from repos + PRs → `analyses` | ~1-2 min for 72K users |
+| `populate-leaderboard` | `sql/populate-leaderboard.sql` | Joins `github_users` + `analyses` → `leaderboard` | **~30s for 72K users** |
+| `populate-analyses` | `sql/populate-analyses.sql` | Computes skill scores from repos + PRs → `analyses` | **~1-2 min for 72K users** |
 
 ### Usage
 
 **Via npm scripts (recommended):**
 ```bash
-# Populate leaderboard from existing cached data
+# Populate leaderboard from existing data
 pnpm sql:populate-leaderboard
 
 # Recompute all skill analyses
@@ -589,9 +589,7 @@ pnpm sql <script-name>
 
 You can also copy the contents of any `sql/*.sql` file directly into your database SQL editor (e.g., Neon Console, pgAdmin, DBeaver) and execute it there.
 
-### Why SQL Scripts?
-
-The original TypeScript implementations processed users one-by-one with individual database queries:
+### Performance Comparison
 
 | Operation | TypeScript (sequential) | SQL (bulk) | Speedup |
 |-----------|------------------------|------------|---------|
@@ -602,27 +600,20 @@ This dramatic improvement comes from:
 - **Zero network round-trips** — all processing happens in PostgreSQL
 - **Set-based operations** — processes all rows at once, not in loops
 - **Temporary tables** — efficient intermediate storage for complex computations
-=======
-| Populate from cache | `npx tsx src/scripts/populate-leaderboard-from-cache.ts` | Scores cached profiles and populates leaderboard (no API calls) |
 
 ---
 
-### Populate Leaderboard from Cache
+## Populate from Cache (TypeScript - Legacy)
 
-This script processes cached API responses from the `api_cache` table and populates all intermediate tables and the leaderboard **without making any GitHub API calls**. This is useful when you have many cached profiles that haven't been scored yet.
+> ⚠️ **Note:** For bulk operations, prefer the SQL scripts above. This TypeScript script is slower but provides more granular control and options.
 
-**Memory efficient:** Processes entries in batches using database cursors to handle 400k+ cache entries without running out of memory.
+This script processes cached API responses from the `api_cache` table and populates all intermediate tables and the leaderboard **without making any GitHub API calls**.
 
-**What it does:**
-1. Scans `api_cache` table in batches to find user profiles
-2. Parses and identifies response types (user profile, user repos, repo PRs)
-3. Populates intermediate tables: `github_users`, `github_repos`, `github_pull_requests`
-4. Runs scoring pipeline stages 2-4 (compute, aggregate, analyze)
-5. Updates `user_repo_scores`, `user_scores`, `analyses`, and `leaderboard` tables
+**Estimated time:** ~28 hours for 67K users (sequential processing with network latency)
 
 **Usage:**
 ```bash
-# Process all cached users
+# Process all cached users (SLOW - use SQL scripts instead)
 npx tsx src/scripts/populate-leaderboard-from-cache.ts
 
 # Process a specific user
@@ -631,14 +622,8 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
 # Dry run (preview only, no database changes)
 npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run --limit=10
 
-# Only process users missing from leaderboard (recommended for large caches)
+# Only process users missing from leaderboard
 npx tsx src/scripts/populate-leaderboard-from-cache.ts --only-missing --limit=100
-
-# Resume processing from a specific offset
-npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
-
-# Only populate intermediate tables, skip scoring
-npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
 ```
 
 **Options:**
@@ -651,25 +636,6 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
 | `--offset=<n>` | Start processing from this user index (for resuming) |
 | `--limit=<n>` | Process only this many users (for testing or batching) |
 | `--only-missing` | Only process users not already in leaderboard |
-| `--help`, `-h` | Show help message |
-
-**Tables populated:**
-- `github_users` — User profiles parsed from cache
-- `github_repos` — Repository data parsed from cache
-- `github_pull_requests` — PR data parsed from cache
-- `user_repo_scores` — Computed per-repo scores (Stage 2)
-- `user_scores` — Aggregated total scores (Stage 3)
-- `analyses` — Skill categorization (Stage 4)
-- `leaderboard` — Final ranked profiles
-- `users` (legacy) — Synced for backward compatibility
-
-**Safety guarantees:**
-- ✅ No GitHub API calls — purely reads from database
-- ✅ No DELETE operations — only INSERT/UPDATE via upserts
-- ✅ Uses existing scoring algorithm — no modifications to core logic
-- ✅ Idempotent — safe to run multiple times
-- ✅ Memory efficient — processes in batches, won't run out of memory
->>>>>>> 2621def3b2f871b9620fcbf4211395b34bc3b19c
 
 ---
 
