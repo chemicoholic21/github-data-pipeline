@@ -553,6 +553,7 @@ pnpm bulk-discover "San Francisco" 0 1
 | Bulk discover | `pnpm bulk-discover <location>` | Main pipeline — discovers and scores users by location |
 | DB push | `pnpm db:push` | Pushes Drizzle schema to the database |
 | LinkedIn enrich | `pnpm enrich-linkedin` | Enriches leaderboard rows with LinkedIn data via Apify |
+<<<<<<< HEAD
 | **SQL runner** | `pnpm sql <script>` | Runs a SQL file from the `sql/` directory |
 | **Populate leaderboard** | `pnpm sql:populate-leaderboard` | Bulk populates leaderboard from github_users + analyses |
 | **Populate analyses** | `pnpm sql:populate-analyses` | Bulk computes skill scores for all users |
@@ -601,6 +602,74 @@ This dramatic improvement comes from:
 - **Zero network round-trips** — all processing happens in PostgreSQL
 - **Set-based operations** — processes all rows at once, not in loops
 - **Temporary tables** — efficient intermediate storage for complex computations
+=======
+| Populate from cache | `npx tsx src/scripts/populate-leaderboard-from-cache.ts` | Scores cached profiles and populates leaderboard (no API calls) |
+
+---
+
+### Populate Leaderboard from Cache
+
+This script processes cached API responses from the `api_cache` table and populates all intermediate tables and the leaderboard **without making any GitHub API calls**. This is useful when you have many cached profiles that haven't been scored yet.
+
+**Memory efficient:** Processes entries in batches using database cursors to handle 400k+ cache entries without running out of memory.
+
+**What it does:**
+1. Scans `api_cache` table in batches to find user profiles
+2. Parses and identifies response types (user profile, user repos, repo PRs)
+3. Populates intermediate tables: `github_users`, `github_repos`, `github_pull_requests`
+4. Runs scoring pipeline stages 2-4 (compute, aggregate, analyze)
+5. Updates `user_repo_scores`, `user_scores`, `analyses`, and `leaderboard` tables
+
+**Usage:**
+```bash
+# Process all cached users
+npx tsx src/scripts/populate-leaderboard-from-cache.ts
+
+# Process a specific user
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --username=torvalds
+
+# Dry run (preview only, no database changes)
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --dry-run --limit=10
+
+# Only process users missing from leaderboard (recommended for large caches)
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --only-missing --limit=100
+
+# Resume processing from a specific offset
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
+
+# Only populate intermediate tables, skip scoring
+npx tsx src/scripts/populate-leaderboard-from-cache.ts --skip-scoring
+```
+
+**Options:**
+| Option | Description |
+|---|---|
+| `--username=<username>` | Process only a specific user |
+| `--dry-run` | Preview what would be processed without making changes |
+| `--batch-size=<n>` | Number of cache entries to scan per batch (default: 1000) |
+| `--skip-scoring` | Only populate intermediate tables, skip scoring stages |
+| `--offset=<n>` | Start processing from this user index (for resuming) |
+| `--limit=<n>` | Process only this many users (for testing or batching) |
+| `--only-missing` | Only process users not already in leaderboard |
+| `--help`, `-h` | Show help message |
+
+**Tables populated:**
+- `github_users` — User profiles parsed from cache
+- `github_repos` — Repository data parsed from cache
+- `github_pull_requests` — PR data parsed from cache
+- `user_repo_scores` — Computed per-repo scores (Stage 2)
+- `user_scores` — Aggregated total scores (Stage 3)
+- `analyses` — Skill categorization (Stage 4)
+- `leaderboard` — Final ranked profiles
+- `users` (legacy) — Synced for backward compatibility
+
+**Safety guarantees:**
+- ✅ No GitHub API calls — purely reads from database
+- ✅ No DELETE operations — only INSERT/UPDATE via upserts
+- ✅ Uses existing scoring algorithm — no modifications to core logic
+- ✅ Idempotent — safe to run multiple times
+- ✅ Memory efficient — processes in batches, won't run out of memory
+>>>>>>> 2621def3b2f871b9620fcbf4211395b34bc3b19c
 
 ---
 
