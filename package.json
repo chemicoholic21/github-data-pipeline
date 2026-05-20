@@ -15,7 +15,10 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:pipeline": "tsx scripts/test-pipeline.ts"
+    "test:pipeline": "tsx scripts/test-pipeline.ts",
+    "sql": "tsx src/scripts/run-sql.ts",
+    "sql:populate-leaderboard": "tsx src/scripts/run-sql.ts populate-leaderboard",
+    "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses"
   },
   "keywords": [],
   "author": "",
