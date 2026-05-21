@@ -19,7 +19,6 @@ export async function upsertGithubUser(user: User) {
     location: user.location ?? null,
     email: user.email ?? null,
     twitterUsername: user.twitterUsername ?? null,
-    linkedin: user.linkedin ?? null,
     company: user.company ?? null,
     hireable: user.isHireable ?? null,
     createdAt: user.createdAt ? new Date(user.createdAt) : null,
@@ -39,9 +38,11 @@ export async function upsertGithubUser(user: User) {
  * Upserts a GitHub repository into the github_repos table.
  */
 export async function upsertGithubRepo(repo: Repository) {
+  const repoId = `${repo.ownerLogin}/${repo.name}`; // Unique ID format: "owner/repo"
   const values = {
+    id: repoId,
     ownerLogin: repo.ownerLogin,
-    repoName: repo.name, // Real DB uses just the name as PK
+    repoName: repo.name,
     description: null,
     primaryLanguage: repo.primaryLanguage,
     stars: repo.stargazerCount,
@@ -60,7 +61,7 @@ export async function upsertGithubRepo(repo: Repository) {
     .insert(githubRepos)
     .values(values)
     .onConflictDoUpdate({
-      target: githubRepos.repoName,
+      target: githubRepos.id,
       set: values,
     });
 }

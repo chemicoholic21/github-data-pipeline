@@ -153,7 +153,8 @@ export const githubUsers = pgTable('github_users', {
 });
 
 export const githubRepos = pgTable('github_repos', {
-  repoName: text('repo_name').primaryKey(), // Real DB PK is ONLY repo_name
+  id: text('id').primaryKey(), // Format: "owner/repo" - unique across GitHub
+  repoName: text('repo_name').notNull(),
   ownerLogin: text('owner_login').notNull(),
   description: text('description'),
   primaryLanguage: text('primary_language'),
