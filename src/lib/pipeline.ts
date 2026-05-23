@@ -239,34 +239,46 @@ async function syncToLegacyTables(
     set: leaderboardData,
   });
 
-  // Sync to leaderboardV2 - consolidated table with all user data
-  // Column order must match DB schema exactly
-  const leaderboardV2Data = {
-    username: user.username,
-    name: user.name ?? null,
-    avatarUrl: user.avatarUrl ?? null,
-    bio: user.bio ?? null,
-    location: user.location ?? null,
-    company: user.company ?? null,
-    blog: user.blog ?? null,
-    url: `https://github.com/${user.username}`,
-    email: user.email ?? null,
-    twitterUsername: user.twitterUsername ?? null,
-    linkedin: linkedin ?? null,
-    hireable: user.hireable ?? false,
-    // Profile stats (nullable in DB)
-    followers: user.followers ?? null,
-    following: user.following ?? null,
-    publicRepos: user.publicRepos ?? null,
-    // Scores - will be updated by analyzeUserSkills later
-    totalScore: agg.totalScore,
-    updatedAt: new Date(),
-  };
-
-  await db.insert(leaderboardV2).values(leaderboardV2Data).onConflictDoUpdate({
-    target: leaderboardV2.username,
-    set: leaderboardV2Data,
-  });
+  // Sync to leaderboardV2 using raw SQL to avoid schema mismatch issues
+  await db.execute(sql`
+    INSERT INTO leaderboard_v2 (username, name, avatar_url, bio, location, company, blog, url, email, twitter_username, linkedin, hireable, followers, following, public_repos, total_score, updated_at)
+    VALUES (
+      ${user.username},
+      ${user.name ?? null},
+      ${user.avatarUrl ?? null},
+      ${user.bio ?? null},
+      ${user.location ?? null},
+      ${user.company ?? null},
+      ${user.blog ?? null},
+      ${`https://github.com/${user.username}`},
+      ${user.email ?? null},
+      ${user.twitterUsername ?? null},
+      ${linkedin ?? null},
+      ${user.hireable ?? false},
+      ${user.followers ?? null},
+      ${user.following ?? null},
+      ${user.publicRepos ?? null},
+      ${agg.totalScore},
+      NOW()
+    )
+    ON CONFLICT (username) DO UPDATE SET
+      name = EXCLUDED.name,
+      avatar_url = EXCLUDED.avatar_url,
+      bio = EXCLUDED.bio,
+      location = EXCLUDED.location,
+      company = EXCLUDED.company,
+      blog = EXCLUDED.blog,
+      url = EXCLUDED.url,
+      email = EXCLUDED.email,
+      twitter_username = EXCLUDED.twitter_username,
+      linkedin = EXCLUDED.linkedin,
+      hireable = EXCLUDED.hireable,
+      followers = EXCLUDED.followers,
+      following = EXCLUDED.following,
+      public_repos = EXCLUDED.public_repos,
+      total_score = EXCLUDED.total_score,
+      updated_at = NOW()
+  `);
   console.log(`[SYNC] ✅ Synced ${username} to leaderboard_v2`);
 }
 
@@ -420,20 +432,20 @@ export async function analyzeUserSkills(username: string) {
       set: analysisData,
     });
 
-    // Update leaderboardV2 with skill scores
-    await db
-      .update(leaderboardV2)
-      .set({
-        totalScore: totalScore,
-        aiScore: categoryScores.ai ?? 0,
-        backendScore: categoryScores.backend ?? 0,
-        frontendScore: categoryScores.frontend ?? 0,
-        devopsScore: categoryScores.devops ?? 0,
-        dataScore: categoryScores.data ?? 0,
-        uniqueSkills: topSkills,
-        updatedAt: new Date(),
-      })
-      .where(eq(leaderboardV2.username, username));
+    // Update leaderboardV2 with skill scores using raw SQL
+    const skillsArray = `{${topSkills.map(s => `"${s}"`).join(',')}}`;
+    await db.execute(sql`
+      UPDATE leaderboard_v2 SET
+        total_score = ${totalScore},
+        ai_score = ${categoryScores.ai ?? 0},
+        backend_score = ${categoryScores.backend ?? 0},
+        frontend_score = ${categoryScores.frontend ?? 0},
+        devops_score = ${categoryScores.devops ?? 0},
+        data_score = ${categoryScores.data ?? 0},
+        unique_skills = ${skillsArray}::text[],
+        updated_at = NOW()
+      WHERE username = ${username}
+    `);
     console.log(`[ANALYZE] ✅ Updated leaderboard_v2 with skill scores`);
 
     console.log(`[ANALYZE][COMPLETE] ✅ Skills analyzed`);

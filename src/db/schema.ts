@@ -269,6 +269,7 @@ export const userSkillScores = pgTable('user_skill_scores', {
 
 // Consolidated leaderboard - single table with all user data for fast queries
 // Combines: github_users (profile) + analyses (scores) + user_scores (efficiency) + OTW fields
+// NOTE: Schema matches actual DB - use raw SQL in pipeline to avoid Drizzle issues
 export const leaderboardV2 = pgTable('leaderboard_v2', {
   username: text('username').primaryKey(),
   name: text('name'),
@@ -282,24 +283,20 @@ export const leaderboardV2 = pgTable('leaderboard_v2', {
   twitterUsername: text('twitter_username'),
   linkedin: text('linkedin'),
   hireable: boolean('hireable').notNull().default(false),
-  // Profile stats (nullable in DB)
   followers: integer('followers'),
   following: integer('following'),
   publicRepos: integer('public_repos'),
-  // Skill scores (computed from repos/PRs by category)
   totalScore: real('total_score').notNull().default(0),
   aiScore: real('ai_score').notNull().default(0),
   backendScore: real('backend_score').notNull().default(0),
   frontendScore: real('frontend_score').notNull().default(0),
   devopsScore: real('devops_score').notNull().default(0),
   dataScore: real('data_score').notNull().default(0),
-  contributorEfficiency: real('contributor_efficiency'), // From user_scores (nullable)
-  // Open-to-work fields (scraped from LinkedIn)
+  contributorEfficiency: real('contributor_efficiency'),
   isOpenToWork: boolean('is_open_to_work'),
   otwErrorCode: text('otw_error_code'),
   otwPermanentFailure: boolean('otw_permanent_failure').default(false),
   otwScrapedAt: timestamp('otw_scraped_at'),
-  // Skills as TEXT[] for GIN index search (not JSONB)
   uniqueSkills: text('unique_skills').array(),
   createdAt: timestamp('created_at'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
