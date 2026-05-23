@@ -36,13 +36,14 @@ export async function upsertGithubUser(user: User) {
 
 /**
  * Upserts a GitHub repository into the github_repos table.
+ * NOTE: Live DB uses repo_name as PK. full_name (owner/repo) is stored separately.
  */
 export async function upsertGithubRepo(repo: Repository) {
-  const repoId = `${repo.ownerLogin}/${repo.name}`; // Unique ID format: "owner/repo"
+  const fullName = `${repo.ownerLogin}/${repo.name}`; // Format: "owner/repo"
   const values = {
-    id: repoId,
+    repoName: repo.name, // This is the PK in live DB
     ownerLogin: repo.ownerLogin,
-    repoName: repo.name,
+    fullName: fullName, // Unique indexed column from v4b migration
     description: null,
     primaryLanguage: repo.primaryLanguage,
     stars: repo.stargazerCount,
@@ -61,7 +62,7 @@ export async function upsertGithubRepo(repo: Repository) {
     .insert(githubRepos)
     .values(values)
     .onConflictDoUpdate({
-      target: githubRepos.id,
+      target: githubRepos.repoName, // PK is repo_name, not id
       set: values,
     });
 }
