@@ -240,26 +240,26 @@ async function syncToLegacyTables(
   });
 
   // Sync to leaderboardV2 - consolidated table with all user data
+  // Column order must match DB schema exactly
   const leaderboardV2Data = {
     username: user.username,
     name: user.name ?? null,
     avatarUrl: user.avatarUrl ?? null,
-    url: `https://github.com/${user.username}`,
-    // Profile stats from githubUsers
-    followers: user.followers ?? 0,
-    following: user.following ?? 0,
-    publicRepos: user.publicRepos ?? 0,
-    // Scores - will be updated by analyzeUserSkills later
-    totalScore: agg.totalScore,
-    // Contact info
+    bio: user.bio ?? null,
+    location: user.location ?? null,
     company: user.company ?? null,
     blog: user.blog ?? null,
-    location: user.location ?? null,
+    url: `https://github.com/${user.username}`,
     email: user.email ?? null,
-    bio: user.bio ?? null,
     twitterUsername: user.twitterUsername ?? null,
     linkedin: linkedin ?? null,
     hireable: user.hireable ?? false,
+    // Profile stats (nullable in DB)
+    followers: user.followers ?? null,
+    following: user.following ?? null,
+    publicRepos: user.publicRepos ?? null,
+    // Scores - will be updated by analyzeUserSkills later
+    totalScore: agg.totalScore,
     updatedAt: new Date(),
   };
 

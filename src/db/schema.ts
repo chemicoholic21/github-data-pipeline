@@ -273,11 +273,19 @@ export const leaderboardV2 = pgTable('leaderboard_v2', {
   username: text('username').primaryKey(),
   name: text('name'),
   avatarUrl: text('avatar_url'),
+  bio: text('bio'),
+  location: text('location'),
+  company: text('company'),
+  blog: text('blog'),
   url: text('url'),
-  // Profile stats
-  followers: integer('followers').notNull().default(0),
-  following: integer('following').notNull().default(0),
-  publicRepos: integer('public_repos').notNull().default(0),
+  email: text('email'),
+  twitterUsername: text('twitter_username'),
+  linkedin: text('linkedin'),
+  hireable: boolean('hireable').notNull().default(false),
+  // Profile stats (nullable in DB)
+  followers: integer('followers'),
+  following: integer('following'),
+  publicRepos: integer('public_repos'),
   // Skill scores (computed from repos/PRs by category)
   totalScore: real('total_score').notNull().default(0),
   aiScore: real('ai_score').notNull().default(0),
@@ -285,23 +293,14 @@ export const leaderboardV2 = pgTable('leaderboard_v2', {
   frontendScore: real('frontend_score').notNull().default(0),
   devopsScore: real('devops_score').notNull().default(0),
   dataScore: real('data_score').notNull().default(0),
-  contributorEfficiency: real('contributor_efficiency').notNull().default(0), // From user_scores
-  // Skills as TEXT[] for GIN index search (not JSONB)
-  uniqueSkills: text('unique_skills').array(),
-  // Contact info
-  company: text('company'),
-  blog: text('blog'),
-  location: text('location'),
-  email: text('email'),
-  bio: text('bio'),
-  twitterUsername: text('twitter_username'),
-  linkedin: text('linkedin'),
-  hireable: boolean('hireable').notNull().default(false),
+  contributorEfficiency: real('contributor_efficiency'), // From user_scores (nullable)
   // Open-to-work fields (scraped from LinkedIn)
   isOpenToWork: boolean('is_open_to_work'),
-  otwRole: text('otw_role'),                       // Desired role
-  otwLocationTypes: text('otw_location_types'),    // Remote, onsite, hybrid
+  otwErrorCode: text('otw_error_code'),
+  otwPermanentFailure: boolean('otw_permanent_failure').default(false),
   otwScrapedAt: timestamp('otw_scraped_at'),
+  // Skills as TEXT[] for GIN index search (not JSONB)
+  uniqueSkills: text('unique_skills').array(),
   createdAt: timestamp('created_at'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
