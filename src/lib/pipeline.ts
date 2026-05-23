@@ -11,13 +11,14 @@ import {
 } from '../db/upserts.js';
 import type { User } from '../types/github.js';
 import { db } from '../db/dbClient.js';
-import { 
+import {
   githubUsers,
   githubRepos,
   githubPullRequests,
-  userRepoScores, 
+  userRepoScores,
   userScores,
   leaderboard,
+  leaderboardV2,
   users,
   analyses
 } from '../db/schema.js';
@@ -237,6 +238,36 @@ async function syncToLegacyTables(
     target: leaderboard.username,
     set: leaderboardData,
   });
+
+  // Sync to leaderboardV2 - consolidated table with all user data
+  const leaderboardV2Data = {
+    username: user.username,
+    name: user.name ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    url: `https://github.com/${user.username}`,
+    // Profile stats from githubUsers
+    followers: user.followers ?? 0,
+    following: user.following ?? 0,
+    publicRepos: user.publicRepos ?? 0,
+    // Scores - will be updated by analyzeUserSkills later
+    totalScore: agg.totalScore,
+    // Contact info
+    company: user.company ?? null,
+    blog: user.blog ?? null,
+    location: user.location ?? null,
+    email: user.email ?? null,
+    bio: user.bio ?? null,
+    twitterUsername: user.twitterUsername ?? null,
+    linkedin: linkedin ?? null,
+    hireable: user.hireable ?? false,
+    updatedAt: new Date(),
+  };
+
+  await db.insert(leaderboardV2).values(leaderboardV2Data).onConflictDoUpdate({
+    target: leaderboardV2.username,
+    set: leaderboardV2Data,
+  });
+  console.log(`[SYNC] ✅ Synced ${username} to leaderboard_v2`);
 }
 
 /**
@@ -388,6 +419,22 @@ export async function analyzeUserSkills(username: string) {
       target: analyses.id,
       set: analysisData,
     });
+
+    // Update leaderboardV2 with skill scores
+    await db
+      .update(leaderboardV2)
+      .set({
+        totalScore: totalScore,
+        aiScore: categoryScores.ai ?? 0,
+        backendScore: categoryScores.backend ?? 0,
+        frontendScore: categoryScores.frontend ?? 0,
+        devopsScore: categoryScores.devops ?? 0,
+        dataScore: categoryScores.data ?? 0,
+        uniqueSkills: topSkills,
+        updatedAt: new Date(),
+      })
+      .where(eq(leaderboardV2.username, username));
+    console.log(`[ANALYZE] ✅ Updated leaderboard_v2 with skill scores`);
 
     console.log(`[ANALYZE][COMPLETE] ✅ Skills analyzed`);
     console.log(`  - AI: ${(categoryScores.ai ?? 0).toFixed(2)}, Backend: ${(categoryScores.backend ?? 0).toFixed(2)}, Frontend: ${(categoryScores.frontend ?? 0).toFixed(2)}`);
