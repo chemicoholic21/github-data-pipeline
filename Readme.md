@@ -145,10 +145,10 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 ## Database
 
-Full schema is in `schema.sql` — readable as-is. Tables are grouped into three layers:
+Full schema in `schema.sql`. Tables:
 
 | Layer | Tables | Purpose |
 |---|---|---|
-| **Pipeline** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `analyses`, `leaderboard` | Stores scraped data, computed scores, skill breakdowns, and final rankings |
-| **Infrastructure** | `api_cache`, `token_rate_limit` | Caches GraphQL responses (30-day TTL) and tracks rate limit state per token |
-| **Legacy** | `users`, `repos` | Kept for backward compatibility; auto-synced during Stage 3 |
+| **Pipeline** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `analyses`, `leaderboard` | Scraped data, scores, skill breakdowns, rankings |
+| **V2** | `leaderboard_v2`, `api_cache_v2`, `conversations`, `messages` | Consolidated leaderboard, parsed cache, chat |
+| **Infra** | `api_cache`, `token_rate_limit` | GraphQL cache (30-day TTL), rate limit tracking |
