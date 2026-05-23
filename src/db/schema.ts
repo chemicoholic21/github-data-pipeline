@@ -232,6 +232,38 @@ export const userScores = pgTable('user_scores', {
 });
 
 // =============================================================================
+// SKILLS TABLES - skill taxonomy and per-user skill scores
+// =============================================================================
+
+// Skill definitions - maps languages/topics/keywords to skill categories
+// 28 skills total (languages, frameworks, tools)
+export const skills = pgTable('skills', {
+  slug: text('slug').primaryKey(),                 // e.g. "typescript", "react"
+  displayName: text('display_name').notNull(),     // e.g. "TypeScript", "React"
+  category: text('category').notNull(),            // e.g. "language", "framework", "tool"
+  matchLanguages: text('match_languages').array().notNull(), // GitHub languages that match
+  matchTopics: text('match_topics').array().notNull(),       // GitHub topics that match
+  matchKeywords: text('match_keywords').array().notNull(),   // Keywords to match
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// Per-user skill scores - computed from repos/PRs matching each skill
+export const userSkillScores = pgTable('user_skill_scores', {
+  username: text('username').notNull(),
+  skillSlug: text('skill_slug').notNull(),         // FK to skills.slug
+  score: real('score').notNull(),                  // Computed skill score
+  repoCount: integer('repo_count').notNull(),      // Number of repos with this skill
+  topReposJson: jsonb('top_repos_json'),           // Top repos for this skill
+  computedAt: timestamp('computed_at').notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.username, table.skillSlug] }),
+  idxSkill: index('idx_uss_skill').on(table.skillSlug),
+  idxScore: index('idx_uss_score').on(table.score),
+  idxUsername: index('idx_uss_username').on(table.username),
+  idxSkillScore: index('idx_uss_skill_score').on(table.skillSlug, table.score),
+}));
+
+// =============================================================================
 // V2 TABLES - consolidated/optimized versions from v4b migration
 // =============================================================================
 
