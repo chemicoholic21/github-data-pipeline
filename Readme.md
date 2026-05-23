@@ -145,10 +145,27 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 ## Database
 
-Full schema is in `schema.sql` — readable as-is. Tables are grouped into three layers:
+Full schema is in `schema.sql` and Drizzle definitions in `src/db/schema.ts`. Tables are grouped into four layers:
 
 | Layer | Tables | Purpose |
 |---|---|---|
 | **Pipeline** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `analyses`, `leaderboard` | Stores scraped data, computed scores, skill breakdowns, and final rankings |
+| **V2 Tables** | `leaderboard_v2`, `api_cache_v2` | Consolidated leaderboard (profile + scores + OTW) and parsed cache with type/subtype/ref columns for faster lookups |
+| **Chat** | `conversations`, `messages` | Direct messaging between users with canonical ordering (user_a < user_b) and soft delete support |
 | **Infrastructure** | `api_cache`, `token_rate_limit` | Caches GraphQL responses (30-day TTL) and tracks rate limit state per token |
 | **Legacy** | `users`, `repos` | Kept for backward compatibility; auto-synced during Stage 3 |
+
+### V2 Migration Notes (v4a + v4b)
+
+The v4b migration introduced several improvements:
+
+- **`github_repos`**: Added `full_name` (owner/repo format, unique indexed) and `languages` (TEXT[]) columns
+- **`github_pull_requests`**: Added `full_name` column for consistency
+- **`leaderboard_v2`**: Single table combining `github_users` profile data, `analyses` skill scores, `user_scores.contributor_efficiency`, and Open-To-Work fields. Uses `unique_skills` as TEXT[] instead of JSONB
+- **`api_cache_v2`**: Parsed cache with `cache_type`, `cache_subtype`, `cache_ref` columns extracted from the original cache key for efficient filtering
+- **`conversations` + `messages`**: Chat infrastructure with canonical user ordering constraint and foreign keys to `github_users`
+
+New indexes (v4a) optimize common query patterns:
+- GIN trigram indexes for text search on `leaderboard_v2` (name, company, location, bio, skills)
+- Partial indexes for merged PRs and active conversations
+- Composite indexes for leaderboard sorting and filtering
