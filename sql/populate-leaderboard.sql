@@ -13,10 +13,10 @@
 -- ============================================================
 
 -- Show count before
-SELECT 'Before: ' || COUNT(*)::text || ' rows in leaderboard' AS status FROM leaderboard;
+SELECT 'Before: ' || COUNT(*)::text || ' rows in leaderboard_old' AS status FROM leaderboard_old;
 
 -- Main upsert operation
-INSERT INTO leaderboard (
+INSERT INTO leaderboard_old (
   username,
   name,
   avatar_url,
@@ -81,7 +81,7 @@ ON CONFLICT (username) DO UPDATE SET
   updated_at = NOW();
 
 -- Show count after
-SELECT 'After: ' || COUNT(*)::text || ' rows in leaderboard' AS status FROM leaderboard;
+SELECT 'After: ' || COUNT(*)::text || ' rows in leaderboard_old' AS status FROM leaderboard_old;
 
 -- Show summary stats
 SELECT
@@ -90,4 +90,4 @@ SELECT
   COUNT(CASE WHEN total_score > 0 THEN 1 END)::text || ' with scores, ' ||
   COUNT(CASE WHEN total_score = 0 THEN 1 END)::text || ' without scores'
   AS status
-FROM leaderboard;
+FROM leaderboard_old;

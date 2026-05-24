@@ -17,10 +17,10 @@ import {
   githubPullRequests,
   userRepoScores,
   userScores,
-  leaderboard,
+  leaderboardOld,
   leaderboardV2,
-  users,
-  analyses
+  usersOld,
+  analysesOld
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { 
@@ -187,7 +187,7 @@ async function syncToLegacyTables(
     return;
   }
 
-  // Sync to legacy 'users' table
+  // Sync to legacy 'users_old' table
   const legacyUserData = {
     username: user.username,
     name: user.name ?? null,
@@ -208,11 +208,11 @@ async function syncToLegacyTables(
     updatedAt: new Date(),
   };
 
-  await db.insert(users).values(legacyUserData).onConflictDoUpdate({
-    target: users.username,
+  await db.insert(usersOld).values(legacyUserData).onConflictDoUpdate({
+    target: usersOld.username,
     set: legacyUserData,
   });
-  console.log(`[SYNC] ✅ Synced ${username} to users table`);
+  console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
 
   // Sync to leaderboard table
   const leaderboardData = {
@@ -234,8 +234,8 @@ async function syncToLegacyTables(
 
   console.log(`[SYNC] Leaderboard data for ${username}: location="${user.location ?? 'null'}"`);
 
-  await db.insert(leaderboard).values(leaderboardData).onConflictDoUpdate({
-    target: leaderboard.username,
+  await db.insert(leaderboardOld).values(leaderboardData).onConflictDoUpdate({
+    target: leaderboardOld.username,
     set: leaderboardData,
   });
 
@@ -427,8 +427,8 @@ export async function analyzeUserSkills(username: string) {
       cachedAt: new Date(),
     };
 
-    await db.insert(analyses).values(analysisData).onConflictDoUpdate({
-      target: analyses.id,
+    await db.insert(analysesOld).values(analysisData).onConflictDoUpdate({
+      target: analysesOld.id,
       set: analysisData,
     });
 

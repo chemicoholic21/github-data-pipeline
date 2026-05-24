@@ -1,6 +1,6 @@
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
-import { apiCache, apiCacheV2 } from '../db/schema.js';
+import { apiCacheOld, apiCacheV2 } from '../db/schema.js';
 
 const DEFAULT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -26,8 +26,8 @@ function parseCacheKey(cacheKey: string): { type: string; subtype: string; ref: 
 export async function getCachedApiResponse(cacheKey: string): Promise<unknown | null> {
   const rows = await db
     .select()
-    .from(apiCache)
-    .where(and(eq(apiCache.cacheKey, cacheKey), gt(apiCache.expiresAt, new Date())))
+    .from(apiCacheOld)
+    .where(and(eq(apiCacheOld.cacheKey, cacheKey), gt(apiCacheOld.expiresAt, new Date())))
     .limit(1);
 
   if (rows.length === 0) {
@@ -49,9 +49,9 @@ export async function setCachedApiResponse(
     // Ensure response is JSON-serializable
     const serialized = JSON.parse(JSON.stringify(response));
 
-    // Write to legacy api_cache table
+    // Write to legacy api_cache_old table
     await db
-      .insert(apiCache)
+      .insert(apiCacheOld)
       .values({
         cacheKey,
         response: serialized,
@@ -59,7 +59,7 @@ export async function setCachedApiResponse(
         expiresAt,
       })
       .onConflictDoUpdate({
-        target: apiCache.cacheKey,
+        target: apiCacheOld.cacheKey,
         set: {
           response: serialized,
           cachedAt: now,
@@ -90,7 +90,7 @@ export async function setCachedApiResponse(
 
 export async function cleanupExpiredApiCache(): Promise<number> {
   const now = new Date();
-  await db.delete(apiCache).where(lt(apiCache.expiresAt, now));
+  await db.delete(apiCacheOld).where(lt(apiCacheOld.expiresAt, now));
 
   return 0;
 }

@@ -147,8 +147,10 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 Full schema in `schema.sql`. Tables:
 
-| Layer | Tables | Purpose |
-|---|---|---|
-| **Pipeline** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `analyses`, `leaderboard` | Scraped data, scores, skill breakdowns, rankings |
-| **V2** | `leaderboard_v2`, `api_cache_v2`, `conversations`, `messages` | Consolidated leaderboard, parsed cache, chat |
-| **Infra** | `api_cache`, `token_rate_limit` | GraphQL cache (30-day TTL), rate limit tracking |
+| Status | Tables | Purpose |
+|--------|--------|---------|
+| **Current** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores |
+| **Current** | `leaderboard_v2`, `api_cache_v2` | Consolidated leaderboard, parsed cache |
+| **Current** | `conversations`, `messages` | Chat system |
+| **Current** | `token_rate_limit` | Infra: rate limit tracking |
+| **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |

@@ -12,7 +12,7 @@
 -- ============================================================
 
 -- Show count before
-SELECT 'Before: ' || COUNT(*)::text || ' rows in analyses' AS status FROM analyses;
+SELECT 'Before: ' || COUNT(*)::text || ' rows in analyses_old' AS status FROM analyses_old;
 
 -- ============================================================
 -- STEP 1: Create temporary table with repo categorization
@@ -161,7 +161,7 @@ GROUP BY owner_login;
 -- ============================================================
 -- STEP 7: Final upsert into analyses
 -- ============================================================
-INSERT INTO analyses (
+INSERT INTO analyses_old (
   id,
   username,
   total_score,
@@ -219,7 +219,7 @@ DROP TABLE IF EXISTS tmp_user_languages;
 DROP TABLE IF EXISTS tmp_user_skills;
 
 -- Show count after
-SELECT 'After: ' || COUNT(*)::text || ' rows in analyses' AS status FROM analyses;
+SELECT 'After: ' || COUNT(*)::text || ' rows in analyses_old' AS status FROM analyses_old;
 
 -- Show summary
 SELECT
@@ -228,4 +228,4 @@ SELECT
   COUNT(CASE WHEN total_score > 0 THEN 1 END)::text || ' with scores, ' ||
   ROUND(AVG(total_score)::numeric, 2)::text || ' avg score'
   AS status
-FROM analyses;
+FROM analyses_old;

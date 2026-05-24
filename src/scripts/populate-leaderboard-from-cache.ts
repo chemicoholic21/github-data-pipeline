@@ -33,7 +33,7 @@
  */
 
 import { db, pool } from '../db/dbClient.js';
-import { apiCache, githubUsers, leaderboard } from '../db/schema.js';
+import { apiCacheOld, githubUsers, leaderboardOld } from '../db/schema.js';
 import {
   upsertGithubUser,
   upsertGithubRepo,
@@ -296,9 +296,9 @@ async function processUserFromCache(
     // Step 1: Find user profile in cache by scanning for their profile response
     // We need to search cache entries that contain this user's profile
     const profileEntries = await db
-      .select({ response: apiCache.response })
-      .from(apiCache)
-      .where(sql`${apiCache.response}::jsonb -> 'user' ->> 'login' ILIKE ${username}`)
+      .select({ response: apiCacheOld.response })
+      .from(apiCacheOld)
+      .where(sql`${apiCacheOld.response}::jsonb -> 'user' ->> 'login' ILIKE ${username}`)
       .limit(1);
 
     if (profileEntries.length === 0) {
@@ -328,8 +328,8 @@ async function processUserFromCache(
 
     // Step 3: Find and process user's repos from cache
     const reposEntries = await db
-      .select({ response: apiCache.response })
-      .from(apiCache)
+      .select({ response: apiCacheOld.response })
+      .from(apiCacheOld)
       .where(sql`
         ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NOT NULL
         AND ${apiCache.response}::jsonb -> 'user' -> 'repositoriesContributedTo' IS NOT NULL
@@ -360,8 +360,8 @@ async function processUserFromCache(
 
     // Step 4: Find and process PRs for this user from cache
     const prEntries = await db
-      .select({ response: apiCache.response })
-      .from(apiCache)
+      .select({ response: apiCacheOld.response })
+      .from(apiCacheOld)
       .where(sql`${apiCache.response}::jsonb -> 'repository' -> 'pullRequests' IS NOT NULL`)
       .limit(10000);
 
@@ -425,8 +425,8 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
   while (true) {
     // Query batch of cache entries that look like user profiles
     const batch = await db
-      .select({ response: apiCache.response })
-      .from(apiCache)
+      .select({ response: apiCacheOld.response })
+      .from(apiCacheOld)
       .where(sql`
         ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
         AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
@@ -483,10 +483,10 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
 async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: number | null): Promise<string[]> {
   console.log('\n[CACHE] Finding users in cache but missing from leaderboard...');
 
-  // First get all usernames from leaderboard (this should be manageable)
+  // First get all usernames from leaderboard_old (this should be manageable)
   const leaderboardUsers = await db
-    .select({ username: leaderboard.username })
-    .from(leaderboard);
+    .select({ username: leaderboardOld.username })
+    .from(leaderboardOld);
 
   const leaderboardSet = new Set(leaderboardUsers.map(u => u.username.toLowerCase()));
   console.log(`[CACHE] Found ${leaderboardSet.size} users already in leaderboard`);
@@ -498,8 +498,8 @@ async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: numb
 
   while (true) {
     const batch = await db
-      .select({ response: apiCache.response })
-      .from(apiCache)
+      .select({ response: apiCacheOld.response })
+      .from(apiCacheOld)
       .where(sql`
         ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
         AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
@@ -627,7 +627,7 @@ Examples:
     // Get count of cache entries for reference
     const countResult = await db
       .select({ count: sql<number>`count(*)` })
-      .from(apiCache);
+      .from(apiCacheOld);
     stats.totalCacheEntries = Number(countResult[0]?.count || 0);
     console.log(`\n[CACHE] Total entries in api_cache: ${stats.totalCacheEntries.toLocaleString()}`);
 

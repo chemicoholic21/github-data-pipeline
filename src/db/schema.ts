@@ -17,8 +17,8 @@ import {
 // =============================================================================
 
 // Legacy user profiles - use github_users or leaderboard_v2 instead
-export const users = pgTable(
-  'users',
+export const usersOld = pgTable(
+  'users_old',
   {
     username: text('username').primaryKey(),
     avatarUrl: text('avatar_url'),
@@ -42,15 +42,15 @@ export const users = pgTable(
     rawJson: jsonb('raw_json'),
   },
   (table) => ({
-    idxUsersLastFetched: index('idx_users_last_fetched').on(table.lastFetched),
-    idxUsersScore: index('idx_users_score').on(table.score),
-    idxUsersFollowers: index('idx_users_followers').on(table.followers),
+    idxUsersOldLastFetched: index('idx_users_old_last_fetched').on(table.lastFetched),
+    idxUsersOldScore: index('idx_users_old_score').on(table.score),
+    idxUsersOldFollowers: index('idx_users_old_followers').on(table.followers),
   })
 );
 
 // Legacy repos - use github_repos instead
-export const repos = pgTable(
-  'repos',
+export const reposOld = pgTable(
+  'repos_old',
   {
     id: text('id').primaryKey(),
     username: text('username').notNull(),
@@ -69,9 +69,9 @@ export const repos = pgTable(
     mergedPrsByUserCount: integer('merged_prs_by_user_count').notNull().default(0),
   },
   (table) => ({
-    idxReposUsername: index('idx_repos_username').on(table.username),
-    idxReposStars: index('idx_repos_stars').on(table.stars),
-    idxReposFullName: index('idx_repos_full_name').on(table.fullName),
+    idxReposOldUsername: index('idx_repos_old_username').on(table.username),
+    idxReposOldStars: index('idx_repos_old_stars').on(table.stars),
+    idxReposOldFullName: index('idx_repos_old_full_name').on(table.fullName),
   })
 );
 
@@ -81,8 +81,8 @@ export const repos = pgTable(
 
 // GitHub API response cache - SHA-256 keyed, 30-day TTL
 // Use api_cache_v2 for parsed/filterable cache access
-export const apiCache = pgTable(
-  'api_cache',
+export const apiCacheOld = pgTable(
+  'api_cache_old',
   {
     cacheKey: text('cache_key').primaryKey(), // SHA-256 hash of request
     response: jsonb('response').notNull(),    // Raw API response
@@ -90,7 +90,7 @@ export const apiCache = pgTable(
     expiresAt: timestamp('expires_at').notNull(),
   },
   (table) => ({
-    idxApiCacheExpiresAt: index('idx_api_cache_expires_at').on(table.expiresAt),
+    idxApiCacheOldExpiresAt: index('idx_api_cache_old_expires_at').on(table.expiresAt),
   })
 );
 
@@ -108,7 +108,7 @@ export const tokenRateLimit = pgTable('token_rate_limit', {
 
 // Skill breakdown per user - AI, Backend, Frontend, DevOps, Data scores
 // Populated by sql/populate-analyses.sql from repos + PRs
-export const analyses = pgTable('analyses', {
+export const analysesOld = pgTable('analyses_old', {
   id: text('id').primaryKey(),
   username: text('username').notNull(),
   totalScore: real('total_score').notNull().default(0),
@@ -127,7 +127,7 @@ export const analyses = pgTable('analyses', {
 
 // Public leaderboard - synced from analyses + github_users
 // Use leaderboard_v2 for consolidated data with OTW fields
-export const leaderboard = pgTable('leaderboard', {
+export const leaderboardOld = pgTable('leaderboard_old', {
   username: text('username').primaryKey(),
   name: text('name'),
   avatarUrl: text('avatar_url'),
