@@ -331,8 +331,8 @@ async function processUserFromCache(
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
       .where(sql`
-        ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NOT NULL
-        AND ${apiCache.response}::jsonb -> 'user' -> 'repositoriesContributedTo' IS NOT NULL
+        ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NOT NULL
+        AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositoriesContributedTo' IS NOT NULL
       `)
       .limit(5000); // Process repos in chunks
 
@@ -362,7 +362,7 @@ async function processUserFromCache(
     const prEntries = await db
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
-      .where(sql`${apiCache.response}::jsonb -> 'repository' -> 'pullRequests' IS NOT NULL`)
+      .where(sql`${apiCacheOld.response}::jsonb -> 'repository' -> 'pullRequests' IS NOT NULL`)
       .limit(10000);
 
     let prsInserted = 0;
@@ -428,9 +428,9 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
       .where(sql`
-        ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
-        AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
-        AND ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NULL
+        ${apiCacheOld.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
+        AND ${apiCacheOld.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
+        AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NULL
       `)
       .limit(batchSize)
       .offset(currentOffset);
@@ -501,9 +501,9 @@ async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: numb
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
       .where(sql`
-        ${apiCache.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
-        AND ${apiCache.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
-        AND ${apiCache.response}::jsonb -> 'user' -> 'repositories' IS NULL
+        ${apiCacheOld.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
+        AND ${apiCacheOld.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
+        AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NULL
       `)
       .limit(batchSize)
       .offset(currentOffset);

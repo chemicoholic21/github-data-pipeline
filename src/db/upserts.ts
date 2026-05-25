@@ -43,7 +43,7 @@ export async function upsertGithubRepo(repo: Repository) {
   const values = {
     repoName: repo.name, // This is the PK in live DB
     ownerLogin: repo.ownerLogin,
-    fullName: fullName, // Unique indexed column from v4b migration
+    fullName: fullName, // Unique indexed column "owner/repo"
     description: null,
     primaryLanguage: repo.primaryLanguage,
     stars: repo.stargazerCount,
