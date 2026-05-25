@@ -20,7 +20,7 @@ import {
   leaderboardOld,
   leaderboard,
   usersOld,
-  analysesOld
+  analyses
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { 
@@ -427,8 +427,8 @@ export async function analyzeUserSkills(username: string) {
       cachedAt: new Date(),
     };
 
-    await db.insert(analysesOld).values(analysisData).onConflictDoUpdate({
-      target: analysesOld.id,
+    await db.insert(analyses).values(analysisData).onConflictDoUpdate({
+      target: analyses.id,
       set: analysisData,
     });
 

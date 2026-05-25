@@ -108,7 +108,7 @@ export const tokenRateLimit = pgTable('token_rate_limit', {
 
 // Skill breakdown per user - AI, Backend, Frontend, DevOps, Data scores
 // Populated by sql/populate-analyses.sql from repos + PRs
-export const analysesOld = pgTable('analyses_old', {
+export const analyses = pgTable('analyses', {
   id: text('id').primaryKey(),
   username: text('username').notNull(),
   totalScore: real('total_score').notNull().default(0),

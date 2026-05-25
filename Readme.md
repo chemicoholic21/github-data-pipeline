@@ -150,9 +150,10 @@ Full schema in `schema.sql`. Tables:
 | Status | Tables | Purpose |
 |--------|--------|---------|
 | **Current** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores |
+| **Current** | `analyses` | Per-user skill breakdown (AI/Backend/Frontend/DevOps/Data) |
 | **Current** | `leaderboard`, `api_cache` | Consolidated leaderboard, parsed cache |
 | **Current** | `conversations`, `messages` | Chat system |
 | **Current** | `token_rate_limit` | Infra: rate limit tracking |
-| **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
+| **Deprecated** | `users_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
 
 > **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `pnpm verify:rename`.

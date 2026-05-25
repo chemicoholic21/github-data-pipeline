@@ -1,5 +1,5 @@
 import { db } from '../db/dbClient.js';
-import { analysesOld, leaderboardOld, githubUsers } from '../db/schema.js';
+import { leaderboardOld, githubUsers } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { Octokit } from '@octokit/rest';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from '../github/tokenPool.js';
