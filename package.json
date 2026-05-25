@@ -18,7 +18,8 @@
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "sql": "tsx src/scripts/run-sql.ts",
     "sql:populate-leaderboard": "tsx src/scripts/run-sql.ts populate-leaderboard",
-    "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses"
+    "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses",
+    "verify:rename": "tsx scripts/verify-rename.ts"
   },
   "keywords": [],
   "author": "",

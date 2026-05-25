@@ -1,6 +1,6 @@
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
-import { apiCacheOld, apiCacheV2 } from '../db/schema.js';
+import { apiCacheOld, apiCache } from '../db/schema.js';
 
 const DEFAULT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -67,12 +67,12 @@ export async function setCachedApiResponse(
         },
       });
 
-    // Write to api_cache_v2 with parsed key components
+    // Write to api_cache with parsed key components
     // Use raw SQL for upsert since cacheKey has unique constraint but is not PK
     const parsed = parseCacheKey(cacheKey);
     const jsonResponse = JSON.stringify(serialized);
     await db.execute(sql`
-      INSERT INTO api_cache_v2 (cache_key, cache_type, cache_subtype, cache_ref, response, cached_at, expires_at)
+      INSERT INTO api_cache (cache_key, cache_type, cache_subtype, cache_ref, response, cached_at, expires_at)
       VALUES (${cacheKey}, ${parsed.type}, ${parsed.subtype}, ${parsed.ref}, ${jsonResponse}::jsonb, ${now}, ${expiresAt})
       ON CONFLICT (cache_key) DO UPDATE SET
         cache_type = EXCLUDED.cache_type,

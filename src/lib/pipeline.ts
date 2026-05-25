@@ -18,7 +18,7 @@ import {
   userRepoScores,
   userScores,
   leaderboardOld,
-  leaderboardV2,
+  leaderboard,
   usersOld,
   analysesOld
 } from '../db/schema.js';
@@ -239,9 +239,9 @@ async function syncToLegacyTables(
     set: leaderboardData,
   });
 
-  // Sync to leaderboardV2 using raw SQL to avoid schema mismatch issues
+  // Sync to leaderboard using raw SQL to avoid schema mismatch issues
   await db.execute(sql`
-    INSERT INTO leaderboard_v2 (username, name, avatar_url, bio, location, company, blog, url, email, twitter_username, linkedin, hireable, followers, following, public_repos, total_score, updated_at)
+    INSERT INTO leaderboard (username, name, avatar_url, bio, location, company, blog, url, email, twitter_username, linkedin, hireable, followers, following, public_repos, total_score, updated_at)
     VALUES (
       ${user.username},
       ${user.name ?? null},
@@ -279,7 +279,7 @@ async function syncToLegacyTables(
       total_score = EXCLUDED.total_score,
       updated_at = NOW()
   `);
-  console.log(`[SYNC] ✅ Synced ${username} to leaderboard_v2`);
+  console.log(`[SYNC] ✅ Synced ${username} to leaderboard`);
 }
 
 /**
@@ -432,10 +432,10 @@ export async function analyzeUserSkills(username: string) {
       set: analysisData,
     });
 
-    // Update leaderboardV2 with skill scores using raw SQL
+    // Update leaderboard with skill scores using raw SQL
     const skillsArray = `{${topSkills.map(s => `"${s}"`).join(',')}}`;
     await db.execute(sql`
-      UPDATE leaderboard_v2 SET
+      UPDATE leaderboard SET
         total_score = ${totalScore},
         ai_score = ${categoryScores.ai ?? 0},
         backend_score = ${categoryScores.backend ?? 0},
@@ -446,7 +446,7 @@ export async function analyzeUserSkills(username: string) {
         updated_at = NOW()
       WHERE username = ${username}
     `);
-    console.log(`[ANALYZE] ✅ Updated leaderboard_v2 with skill scores`);
+    console.log(`[ANALYZE] ✅ Updated leaderboard with skill scores`);
 
     console.log(`[ANALYZE][COMPLETE] ✅ Skills analyzed`);
     console.log(`  - AI: ${(categoryScores.ai ?? 0).toFixed(2)}, Backend: ${(categoryScores.backend ?? 0).toFixed(2)}, Frontend: ${(categoryScores.frontend ?? 0).toFixed(2)}`);

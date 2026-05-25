@@ -16,7 +16,7 @@ import {
 // LEGACY TABLES - kept for backward compatibility, auto-synced during Stage 3
 // =============================================================================
 
-// Legacy user profiles - use github_users or leaderboard_v2 instead
+// Legacy user profiles - use github_users or leaderboard instead
 export const usersOld = pgTable(
   'users_old',
   {
@@ -80,7 +80,7 @@ export const reposOld = pgTable(
 // =============================================================================
 
 // GitHub API response cache - SHA-256 keyed, 30-day TTL
-// Use api_cache_v2 for parsed/filterable cache access
+// Use api_cache for parsed/filterable cache access
 export const apiCacheOld = pgTable(
   'api_cache_old',
   {
@@ -126,7 +126,7 @@ export const analysesOld = pgTable('analyses_old', {
 });
 
 // Public leaderboard - synced from analyses + github_users
-// Use leaderboard_v2 for consolidated data with OTW fields
+// Use leaderboard for consolidated data with OTW fields
 export const leaderboardOld = pgTable('leaderboard_old', {
   username: text('username').primaryKey(),
   name: text('name'),
@@ -264,13 +264,13 @@ export const userSkillScores = pgTable('user_skill_scores', {
 }));
 
 // =============================================================================
-// V2 TABLES - consolidated/optimized versions from v4b migration
+// CONSOLIDATED TABLES - primary leaderboard + parsed API cache
 // =============================================================================
 
 // Consolidated leaderboard - single table with all user data for fast queries
 // Combines: github_users (profile) + analyses (scores) + user_scores (efficiency) + OTW fields
 // NOTE: Schema matches actual DB - use raw SQL in pipeline to avoid Drizzle issues
-export const leaderboardV2 = pgTable('leaderboard_v2', {
+export const leaderboard = pgTable('leaderboard', {
   username: text('username').primaryKey(),
   name: text('name'),
   avatarUrl: text('avatar_url'),
@@ -302,9 +302,9 @@ export const leaderboardV2 = pgTable('leaderboard_v2', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// Parsed API cache - same data as api_cache but with extracted fields for filtering
+// Parsed API cache - GitHub API responses with extracted fields for filtering
 // cache_key format: "github:graphql:<username>" → type=github, subtype=graphql, ref=username
-export const apiCacheV2 = pgTable('api_cache_v2', {
+export const apiCache = pgTable('api_cache', {
   id: serial('id').primaryKey(),
   cacheType: text('cache_type').notNull(),         // e.g. "github"
   cacheSubtype: text('cache_subtype').notNull(),   // e.g. "graphql", "rest"
