@@ -19,21 +19,21 @@ All GraphQL responses are cached in PostgreSQL (SHA-256 keyed, 30-day TTL). Mult
 
 ## Setup
 
-**Prerequisites:** Node.js 20+, pnpm, PostgreSQL
+**Prerequisites:** Node.js 20+, npm, PostgreSQL
 
 ```bash
 git clone https://github.com/chemicoholic21/github-data-pipeline.git
 cd github-data-pipeline
-pnpm install
+npm install
 cp .env.example .env   # add DATABASE_URL and GitHub tokens
-pnpm db:push
+npm run db:push
 ```
 
 **Run the pipeline:**
 
 ```bash
-pnpm bulk-discover "Chennai"
-pnpm bulk-discover "San Francisco" 0 1   # with start index and page
+npm run bulk-discover "Chennai"
+npm run bulk-discover "San Francisco" 0 1   # with start index and page
 ```
 
 ---
@@ -73,14 +73,14 @@ Discovers developers by location, fetches their repos and PRs, scores them, and 
 
 ```bash
 # Single region
-pnpm bulk-discover "Bengaluru"
+npm run bulk-discover "Bengaluru"
 
 # Multiple regions in one run
-pnpm bulk-discover "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
+npm run bulk-discover "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
 
 # Resume from a specific range index and page (useful after a crash or rate limit)
-pnpm bulk-discover "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
-pnpm bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
+npm run bulk-discover "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
+npm run bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
 ```
 
 ---
@@ -113,8 +113,8 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
 Use these to recompute scores or refresh the leaderboard after schema changes or bulk imports. Much faster than the TypeScript equivalents.
 
 ```bash
-pnpm sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
-pnpm sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
+npm run sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
+npm run sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
 ```
 
 Run `populate-analyses` before `populate-leaderboard` if recomputing from scratch.
@@ -155,4 +155,4 @@ Full schema in `schema.sql`. Tables:
 | **Current** | `token_rate_limit` | Infra: rate limit tracking |
 | **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
 
-> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `pnpm verify:rename`.
+> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `npm run verify:rename`.
