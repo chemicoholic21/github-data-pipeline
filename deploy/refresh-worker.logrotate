@@ -1,0 +1,18 @@
+# Logrotate config for the refresh-worker app.log.
+#
+# Install on the droplet:
+#   sudo cp deploy/refresh-worker.logrotate /etc/logrotate.d/refresh-worker
+#
+# If you cloned the repo somewhere other than /root/github-data-pipeline,
+# edit the path on the first line.
+#
+# Rotates daily, keeps 7 days compressed. logrotate's nightly cron picks it up.
+
+/root/github-data-pipeline/app.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
