@@ -57,6 +57,7 @@ async function getStaleBatch(limit: number): Promise<string[]> {
     WITH ranked AS (
       SELECT
         l.username,
+        l.total_score,
         gu.scraped_at,
         ROW_NUMBER() OVER (ORDER BY l.total_score DESC) AS rank
       FROM leaderboard l
@@ -65,7 +66,7 @@ async function getStaleBatch(limit: number): Promise<string[]> {
     SELECT username
     FROM ranked
     WHERE scraped_at IS NULL
-       OR scraped_at < NOW() - (${REFRESH_AFTER_DAYS} * INTERVAL '1 day')
+       OR scraped_at < NOW() - (${REFRESH_AFTER_DAYS}::int * INTERVAL '1 day')
     ORDER BY
       (scraped_at IS NULL) DESC,
       scraped_at ASC NULLS FIRST,
@@ -109,7 +110,9 @@ async function main() {
     try {
       batch = await getStaleBatch(BATCH_SIZE);
     } catch (e) {
-      console.error('[worker] stale-batch query failed:', (e as Error).message);
+      const err = e as Error & { cause?: unknown };
+      const cause = err.cause instanceof Error ? err.cause.message : String(err.cause ?? '');
+      console.error('[worker] stale-batch query failed:', err.message, cause ? `(cause: ${cause})` : '');
       await sleep(IDLE_SLEEP_MS);
       continue;
     }
