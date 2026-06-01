@@ -7,7 +7,8 @@ import {
   upsertGithubUser,
   upsertGithubRepo,
   insertPullRequests,
-  upsertUserRepoScore
+  upsertUserRepoScore,
+  markGithubUserScraped,
 } from '../db/upserts.js';
 import type { User } from '../types/github.js';
 import { db } from '../db/dbClient.js';
@@ -479,6 +480,7 @@ export async function runPipeline(username: string) {
     await analyzeUserSkills(username);
     console.log(`[PIPELINE] Stage 4 ✅ Complete`);
 
+    await markGithubUserScraped(username);
     console.log(`[PIPELINE] ✅ Pipeline complete for ${username}`);
   } catch (error: any) {
     console.error(`[PIPELINE] ❌ FAILED for ${username}: ${error.message}`);

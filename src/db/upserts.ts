@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm';
  * Upserts a GitHub user profile into the github_users table.
  */
 export async function upsertGithubUser(user: User) {
-  const values = {
+  const insertValues = {
     username: user.login,
     name: user.name ?? null,
     avatarUrl: user.avatarUrl ?? null,
@@ -22,15 +22,32 @@ export async function upsertGithubUser(user: User) {
     company: user.company ?? null,
     hireable: user.isHireable ?? null,
     createdAt: user.createdAt ? new Date(user.createdAt) : null,
-    scrapedAt: new Date(),
+    scrapedAt: new Date(0),
+  };
+
+  const updateValues = {
+    username: user.login,
+    name: user.name ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    bio: user.bio ?? null,
+    followers: user.followers,
+    following: user.following,
+    publicRepos: 0,
+    blog: user.blog ?? null,
+    location: user.location ?? null,
+    email: user.email ?? null,
+    twitterUsername: user.twitterUsername ?? null,
+    company: user.company ?? null,
+    hireable: user.isHireable ?? null,
+    createdAt: user.createdAt ? new Date(user.createdAt) : null,
   };
 
   return await db
     .insert(githubUsers)
-    .values(values)
+    .values(insertValues)
     .onConflictDoUpdate({
       target: githubUsers.username,
-      set: values,
+      set: updateValues,
     });
 }
 
@@ -108,3 +125,12 @@ export async function upsertUserRepoScore(data: any) {
       set: data,
     });
 }
+
+export async function markGithubUserScraped(username: string) {
+  return await db.execute(sql`
+    UPDATE github_users
+    SET scraped_at = NOW()
+    WHERE username = ${username}
+  `);
+}
+
