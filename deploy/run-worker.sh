@@ -12,7 +12,7 @@
 #   1) Clone & install:
 #        git clone <this-repo> /root/github-data-pipeline
 #        cd /root/github-data-pipeline
-#        corepack enable && pnpm install --frozen-lockfile
+#        npm install
 #
 #   2) Create /root/github-data-pipeline/.env.local with:
 #        NODE_ENV=production
@@ -55,8 +55,8 @@ while true; do
     echo "=== started at $(date -Iseconds) ==="
   } >> "$LOG_FILE"
 
-  # tsx is preferred; pnpm script wraps it consistently with the rest of the repo.
-  pnpm refresh-worker >> "$LOG_FILE" 2>&1
+  # tsx is preferred; the npm script wraps it consistently with the rest of the repo.
+  npm run refresh-worker --silent >> "$LOG_FILE" 2>&1
   exit_code=$?
 
   echo "=== exited at $(date -Iseconds) with code ${exit_code} ===" >> "$LOG_FILE"
