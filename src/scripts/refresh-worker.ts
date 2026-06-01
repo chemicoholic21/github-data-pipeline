@@ -14,7 +14,7 @@
  *   - When no users are stale, idles 5 minutes and re-checks.
  *
  * Run via:
- *   pnpm tsx src/scripts/refresh-worker.ts
+ *   npm run refresh-worker
  *   (or via deploy/run-worker.sh inside tmux for crash-restart)
  *
  * Tunables (env vars, all optional):
