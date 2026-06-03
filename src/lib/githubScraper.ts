@@ -245,7 +245,7 @@ const extractLinkedIn = (
 /**
  * Fetches a GitHub user profile.
  */
-export async function fetchGithubUser(username: string): Promise<User> {
+export async function fetchGithubUser(username: string, forceRefresh = false): Promise<User> {
   console.log(`[API] Fetching user profile: ${username}`);
   const res = await gitHubGraphqlClient.request<UserResponse>({
     query: GET_USER_QUERY,
@@ -253,6 +253,7 @@ export async function fetchGithubUser(username: string): Promise<User> {
     operationName: 'GetUser',
     useCache: true,
     cacheTTL: 30 * 24 * 60 * 60 * 1000, // 30 days
+    forceRefresh,
   });
 
   if (!res.user) {
@@ -284,7 +285,7 @@ export async function fetchGithubUser(username: string): Promise<User> {
 /**
  * Fetches repositories a user has contributed to or owns.
  */
-export async function fetchUserRepositories(username: string): Promise<Repository[]> {
+export async function fetchUserRepositories(username: string, forceRefresh = false): Promise<Repository[]> {
   console.log(`[API] Fetching repositories for: ${username}`);
   const res = await gitHubGraphqlClient.request<UserReposResponse>({
     query: GET_USER_REPOS_QUERY,
@@ -292,6 +293,7 @@ export async function fetchUserRepositories(username: string): Promise<Repositor
     operationName: 'GetUserRepos',
     useCache: true,
     cacheTTL: 30 * 24 * 60 * 60 * 1000,
+    forceRefresh,
   });
 
   if (!res.user) {
@@ -329,7 +331,7 @@ export async function fetchUserRepositories(username: string): Promise<Repositor
 /**
  * Fetches merged pull requests for a specific repository.
  */
-export async function fetchPullRequestsForRepo(owner: string, repo: string): Promise<PullRequest[]> {
+export async function fetchPullRequestsForRepo(owner: string, repo: string, forceRefresh = false): Promise<PullRequest[]> {
   console.log(`[API] Fetching PRs for: ${owner}/${repo}`);
   const res = await gitHubGraphqlClient.request<RepoPrsResponse>({
     query: GET_REPO_PRS_QUERY,
@@ -337,6 +339,7 @@ export async function fetchPullRequestsForRepo(owner: string, repo: string): Pro
     operationName: 'GetRepoPrs',
     useCache: true,
     cacheTTL: 30 * 24 * 60 * 60 * 1000,
+    forceRefresh,
   });
 
   if (!res.repository) {

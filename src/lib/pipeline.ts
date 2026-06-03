@@ -31,17 +31,17 @@ import {
 /**
  * STAGE 1: SCRAPE
  */
-export async function scrapeUser(username: string): Promise<User> {
+export async function scrapeUser(username: string, forceRefresh = false): Promise<User> {
   console.log(`\n[SCRAPE][START] User: ${username}`);
 
   try {
     console.log(`[SCRAPE] Fetching user profile...`);
-    const user = await fetchGithubUser(username);
+    const user = await fetchGithubUser(username, forceRefresh);
     await upsertGithubUser(user);
     console.log(`[SCRAPE][USER] ✅ Profile saved`);
 
     console.log(`[SCRAPE] Fetching repositories...`);
-    const repos = await fetchUserRepositories(username);
+    const repos = await fetchUserRepositories(username, forceRefresh);
     console.log(`[SCRAPE][REPOS] Found ${repos.length} repositories.`);
 
     for (const repo of repos) {
@@ -55,7 +55,7 @@ export async function scrapeUser(username: string): Promise<User> {
     let totalPrsSaved = 0;
     for (const repo of qualifyingRepos) {
       try {
-        const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name);
+        const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name, forceRefresh);
         const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
 
         if (userPrs.length > 0) {
@@ -460,12 +460,12 @@ export async function analyzeUserSkills(username: string) {
   }
 }
 
-export async function runPipeline(username: string) {
+export async function runPipeline(username: string, forceRefresh = false) {
   try {
     console.log(`\n[PIPELINE] Starting for ${username}...`);
 
     console.log(`[PIPELINE] Stage 1: Scraping user data...`);
-    const scrapedUser = await scrapeUser(username);
+    const scrapedUser = await scrapeUser(username, forceRefresh);
     console.log(`[PIPELINE] Stage 1 ✅ Complete`);
 
     console.log(`[PIPELINE] Stage 2: Computing repo scores...`);

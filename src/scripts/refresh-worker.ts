@@ -145,7 +145,7 @@ async function main() {
       }
 
       try {
-        await runPipeline(username);
+        await runPipeline(username, true);
         totalProcessed++;
       } catch (e) {
         // runPipeline already catches its own errors, but be defensive.
