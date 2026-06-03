@@ -17,6 +17,7 @@ export interface GitHubGraphqlRequestOptions {
   operationName?: string;
   useCache?: boolean;
   cacheTTL?: number;
+  forceRefresh?: boolean;
 }
 
 export interface GraphQLResponse<T> {
@@ -41,6 +42,7 @@ class GitHubGraphqlClient {
       operationName,
       useCache = true,
       cacheTTL = 30 * 24 * 60 * 60 * 1000,
+      forceRefresh = false,
     } = options;
 
     let cacheKey = '';
@@ -51,10 +53,12 @@ class GitHubGraphqlClient {
         .digest('hex');
       cacheKey = `github:graphql:${hash}`;
 
-      const cachedResult = await getCachedApiResponse(cacheKey);
-      if (cachedResult) {
-        console.log(`[CACHE_HIT] ${operationName || 'query'}`);
-        return cachedResult as T;
+      if (!forceRefresh) {
+        const cachedResult = await getCachedApiResponse(cacheKey);
+        if (cachedResult) {
+          console.log(`[CACHE_HIT] ${operationName || 'query'}`);
+          return cachedResult as T;
+        }
       }
     }
 

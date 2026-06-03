@@ -19,21 +19,21 @@ All GraphQL responses are cached in PostgreSQL (SHA-256 keyed, 30-day TTL). Mult
 
 ## Setup
 
-**Prerequisites:** Node.js 20+, npm, PostgreSQL
+**Prerequisites:** Node.js 20+, pnpm, PostgreSQL
 
 ```bash
 git clone https://github.com/chemicoholic21/github-data-pipeline.git
 cd github-data-pipeline
-npm install
+pnpm install
 cp .env.example .env   # add DATABASE_URL and GitHub tokens
-npm run db:push
+pnpm run db:push
 ```
 
 **Run the pipeline:**
 
 ```bash
-npm run bulk-discover "Chennai"
-npm run bulk-discover "San Francisco" 0 1   # with start index and page
+pnpm run bulk-discover "Chennai"
+pnpm run bulk-discover "San Francisco" 0 1   # with start index and page
 ```
 
 ---
@@ -46,7 +46,7 @@ This pipeline:
 - **Stage 1 (SCRAPE):** Fetches deep profile data (repos, languages, topics, merged PRs) via the GitHub GraphQL API → `github_users`, `github_repos`, `github_pull_requests`
 - **Stage 2 (COMPUTE):** Calculates per-repository scores using `score = stars × (userPRs / totalPRs)` → `user_repo_scores`
 - **Stage 3 (AGGREGATE):** Sums all repo scores → `user_scores`, syncs to `leaderboard`
-- **Stage 4 (ANALYZE):** Categorizes repos by topics/languages, computes skill scores across five categories (AI, Backend, Frontend, DevOps, Data) → `analyses`
+- **Stage 4 (ANALYZE):** Categorizes repos by topics/languages, computes skill scores across five categories (AI, Backend, Frontend, DevOps, Data) → `user_skill_scores`
 - Caches all GitHub API responses in `api_cache` (SHA-256 keyed) to avoid redundant requests
 - Manages a pool of multiple GitHub tokens, automatically rotating to the token with the highest remaining quota via `token_rate_limit`
 
@@ -73,19 +73,42 @@ Discovers developers by location, fetches their repos and PRs, scores them, and 
 
 ```bash
 # Single region
-npm run bulk-discover "Bengaluru"
+pnpm run bulk-discover "Bengaluru"
 
 # Multiple regions in one run
-npm run bulk-discover "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
+pnpm run bulk-discover "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
 
 # Resume from a specific range index and page (useful after a crash or rate limit)
-npm run bulk-discover "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
-npm run bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
+pnpm run bulk-discover "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
+pnpm run bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
 ```
 
 ---
 
-### 2. Populate leaderboard from cached data (no API calls)
+### 2. Refresh worker (continuous profile updates)
+
+Daemon that automatically refreshes stale GitHub profiles (>30 days old). Runs indefinitely, picking the oldest users and re-running the full pipeline on each.
+
+```bash
+# Start the refresh worker
+pnpm run refresh-worker
+
+# Or deploy via tmux for persistence
+deploy/run-worker.sh
+```
+
+**Environment tunables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REFRESH_AFTER_DAYS` | 30 | Days before a profile is considered stale |
+| `REFRESH_BATCH_SIZE` | 200 | Users to fetch per batch |
+| `PER_USER_DELAY_MS` | 1500 | Delay between users (rate limit safety) |
+| `IDLE_SLEEP_MS` | 300000 | Sleep when no stale users (5 min) |
+
+---
+
+### 3. Populate leaderboard from cached data (no API calls)
 
 If you've already scraped data and just need to (re)populate the leaderboard — use this. Reads entirely from `api_cache`, no GitHub calls made.
 
@@ -108,13 +131,13 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
 
 ---
 
-### 3. Bulk SQL scripts (fastest — runs inside PostgreSQL)
+### 4. Bulk SQL scripts (fastest — runs inside PostgreSQL)
 
 Use these to recompute scores or refresh the leaderboard after schema changes or bulk imports. Much faster than the TypeScript equivalents.
 
 ```bash
-npm run sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
-npm run sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
+pnpm run sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
+pnpm run sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
 ```
 
 Run `populate-analyses` before `populate-leaderboard` if recomputing from scratch.
@@ -155,4 +178,4 @@ Full schema in `schema.sql`. Tables:
 | **Current** | `token_rate_limit` | Infra: rate limit tracking |
 | **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
 
-> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `npm run verify:rename`.
+> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `pnpm run verify:rename`.
