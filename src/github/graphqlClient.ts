@@ -68,6 +68,14 @@ class GitHubGraphqlClient {
 
     try {
       console.log(`[GraphQL] Sending ${operationName || 'query'} request...`);
+      console.log(`[GraphQL] Variables: ${JSON.stringify(variables)}`);
+      
+      // Log as curl command for reproducibility
+      const tokenPreview = token.slice(0, 20) + '...';
+      const payload = JSON.stringify({ query, variables, operationName });
+      const escapedPayload = payload.replace(/'/g, "'\\''");
+      console.log(`[GraphQL] Reproduce with:\ncurl -X POST https://api.github.com/graphql \\\n  -H "Authorization: Bearer ${tokenPreview}" \\\n  -H "Content-Type: application/json" \\\n  -d '${escapedPayload}'`);
+
       const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
         query,
         variables,
