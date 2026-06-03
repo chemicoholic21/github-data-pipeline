@@ -95,29 +95,6 @@ export async function cleanupExpiredApiCache(): Promise<number> {
   return 0;
 }
 
-/**
- * Clear all cached API responses that contain the given username.
- * Used by the refresh worker to force fresh API calls for a stale user.
- * Deletes from both api_cache_old and api_cache tables.
- */
-export async function clearUserApiCache(username: string): Promise<number> {
-  const likePattern = `%"login":"${username}"%`;
-  
-  const { rowCount: oldCount } = await db.execute(
-    sql`DELETE FROM api_cache_old WHERE response::text LIKE ${likePattern}`
-  );
-  
-  const { rowCount: newCount } = await db.execute(
-    sql`DELETE FROM api_cache WHERE response::text LIKE ${likePattern}`
-  );
-
-  const total = (oldCount ?? 0) + (newCount ?? 0);
-  if (total > 0) {
-    console.log(`[CACHE] Cleared ${total} cache entries for user ${username}`);
-  }
-  return total;
-}
-
 export async function withCache<T>(
   key: string,
   fetcher: () => Promise<T>,

@@ -28,7 +28,6 @@ import { sql } from 'drizzle-orm';
 import { db, pool } from '../lib/db.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getBestToken } from '../github/tokenPool.js';
-import { clearUserApiCache } from '../lib/apiCache.js';
 
 const REFRESH_AFTER_DAYS = Number(process.env.REFRESH_AFTER_DAYS ?? 30);
 const BATCH_SIZE = Number(process.env.REFRESH_BATCH_SIZE ?? 200);
@@ -146,8 +145,7 @@ async function main() {
       }
 
       try {
-        await clearUserApiCache(username);
-        await runPipeline(username);
+        await runPipeline(username, true);
         totalProcessed++;
       } catch (e) {
         // runPipeline already catches its own errors, but be defensive.
