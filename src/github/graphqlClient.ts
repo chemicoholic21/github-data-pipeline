@@ -110,7 +110,10 @@ class GitHubGraphqlClient {
       if (axios.isAxiosError(error)) {
         console.error(`[GraphQL] Status: ${error.response?.status}`);
         if (error.response) {
-          if (
+          if (error.response.status === 401) {
+            console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted`);
+            await markTokenExhausted(tokenIndex, Math.floor(Date.now() / 1000) + 86400);
+          } else if (
             error.response.status === 403 &&
             (error.response.data?.message?.includes('rate limit exceeded') ||
               error.response.data?.message?.includes('secondary rate limit'))
