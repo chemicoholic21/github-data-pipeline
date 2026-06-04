@@ -62,68 +62,102 @@ class GitHubGraphqlClient {
       }
     }
 
-    const { token, index: tokenIndex } = await getBestToken();
+    // Rotate through the available PATs within a single request. A 401 (dead
+    // token) or 403 rate-limit marks that token unusable and we immediately try
+    // the next-best one — no backoff needed, since switching credentials is the
+    // correct response. We stop when a token succeeds, when every token has been
+    // tried, or when getBestToken reports all tokens exhausted.
+    const tried = new Set<number>();
+    let lastError: unknown;
 
-    this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-    try {
-      console.log(`[GraphQL] Sending ${operationName || 'query'} request...`);
-      const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
-        query,
-        variables,
-        operationName,
-      });
-
-      const responseHeaders = response.headers;
-      const remaining = parseInt(responseHeaders['x-ratelimit-remaining'] || '0', 10);
-      const resetTime = parseInt(responseHeaders['x-ratelimit-reset'] || '0', 10);
-
-      await updateTokenRateLimit(tokenIndex, remaining, resetTime);
-
-      let result: T;
-      if (response.data && response.data.data) {
-        result = response.data.data as T;
-      } else {
-        if (response.data.errors) {
-          const errorMsg = JSON.stringify(response.data.errors);
-          console.error(`[GraphQL] API errors: ${errorMsg}`);
-          throw new Error('GitHub GraphQL API errors: ' + errorMsg);
-        }
-        result = response.data as unknown as T;
+    while (true) {
+      let token: string;
+      let tokenIndex: number;
+      try {
+        ({ token, index: tokenIndex } = await getBestToken());
+      } catch (e) {
+        // No token with remaining quota. Surface the underlying request error
+        // if we have one (more actionable), otherwise the pool error.
+        throw lastError ?? e;
       }
 
-      if (useCache && cacheKey) {
-        try {
-          console.log(`[CACHE] Writing to api_cache: ${cacheKey.substring(0, 50)}...`);
-          await setCachedApiResponse(cacheKey, result, cacheTTL);
-          console.log(`[CACHE] ✅ Successfully cached`);
-        } catch (cacheError: any) {
-          console.error(`[CACHE] ❌ Failed to write cache: ${cacheError.message}`);
-          // Don't crash the pipeline, just log the error
-        }
+      // getBestToken handed back a token we already tried this request — the
+      // pool can't offer anything new, so stop rotating to avoid an infinite loop.
+      if (tried.has(tokenIndex)) {
+        throw lastError ?? new Error('rate-limited-all-tokens');
       }
+      tried.add(tokenIndex);
 
-      return result;
-    } catch (error: unknown) {
-      console.error(`[GraphQL] Error: ${error instanceof Error ? error.message : String(error)}`);
-      
-      if (axios.isAxiosError(error)) {
-        console.error(`[GraphQL] Status: ${error.response?.status}`);
-        if (error.response) {
+      this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      try {
+        console.log(`[GraphQL] Sending ${operationName || 'query'} request (token ${tokenIndex})...`);
+        const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
+          query,
+          variables,
+          operationName,
+        });
+
+        const responseHeaders = response.headers;
+        const remaining = parseInt(responseHeaders['x-ratelimit-remaining'] || '0', 10);
+        const resetTime = parseInt(responseHeaders['x-ratelimit-reset'] || '0', 10);
+
+        await updateTokenRateLimit(tokenIndex, remaining, resetTime);
+
+        let result: T;
+        if (response.data && response.data.data) {
+          result = response.data.data as T;
+        } else {
+          if (response.data.errors) {
+            const errorMsg = JSON.stringify(response.data.errors);
+            console.error(`[GraphQL] API errors: ${errorMsg}`);
+            throw new Error('GitHub GraphQL API errors: ' + errorMsg);
+          }
+          result = response.data as unknown as T;
+        }
+
+        if (useCache && cacheKey) {
+          try {
+            console.log(`[CACHE] Writing to api_cache: ${cacheKey.substring(0, 50)}...`);
+            await setCachedApiResponse(cacheKey, result, cacheTTL);
+            console.log(`[CACHE] ✅ Successfully cached`);
+          } catch (cacheError: any) {
+            console.error(`[CACHE] ❌ Failed to write cache: ${cacheError.message}`);
+            // Don't crash the pipeline, just log the error
+          }
+        }
+
+        return result;
+      } catch (error: unknown) {
+        lastError = error;
+        console.error(`[GraphQL] Error: ${error instanceof Error ? error.message : String(error)}`);
+
+        if (axios.isAxiosError(error) && error.response) {
+          console.error(`[GraphQL] Status: ${error.response.status}`);
+
           if (error.response.status === 401) {
-            console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted`);
+            console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`);
             await markTokenExhausted(tokenIndex, Math.floor(Date.now() / 1000) + 86400);
-          } else if (
+            continue; // try the next-best token immediately, no backoff
+          }
+
+          if (
             error.response.status === 403 &&
             (error.response.data?.message?.includes('rate limit exceeded') ||
               error.response.data?.message?.includes('secondary rate limit'))
           ) {
             const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
+            console.error(`[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`);
             await markTokenExhausted(tokenIndex, resetTime);
+            continue; // another token may still have quota
           }
         }
+
+        // Non-auth / non-rate-limit error (network blip, GraphQL errors, etc.):
+        // not token-specific, so don't burn other PATs — let the caller's
+        // retry/backoff handle it.
+        throw error;
       }
-      throw error;
     }
   }
 }
