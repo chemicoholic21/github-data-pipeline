@@ -21,16 +21,20 @@ const envSchema = z.object({
 const env = envSchema.parse(process.env);
 
 // Collect GitHub tokens
-const githubTokens: string[] = [];
+const githubTokenCandidates: string[] = [];
 if (env.GITHUB_TOKENS) {
-  githubTokens.push(...env.GITHUB_TOKENS.split(','));
+  githubTokenCandidates.push(
+    ...env.GITHUB_TOKENS.split(',').map((value) => value.trim()).filter(Boolean)
+  );
 }
 for (let i = 1; i <= 5; i++) {
   const token = env[`GITHUB_TOKEN_${i}` as keyof typeof env] as string | undefined;
   if (token) {
-    githubTokens.push(token);
+    githubTokenCandidates.push(token.trim());
   }
 }
+
+const githubTokens = Array.from(new Set(githubTokenCandidates.filter(Boolean)));
 
 if (githubTokens.length === 0) {
   throw new Error('No GitHub tokens found. Please set GITHUB_TOKENS or GITHUB_TOKEN_1, etc.');

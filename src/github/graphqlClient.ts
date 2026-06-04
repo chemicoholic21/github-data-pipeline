@@ -135,7 +135,19 @@ class GitHubGraphqlClient {
         if (axios.isAxiosError(error) && error.response) {
           console.error(`[GraphQL] Status: ${error.response.status}`);
 
-          if (error.response.status === 401) {
+          const message =
+            typeof error.response.data === 'object' && error.response.data !== null
+              ? (error.response.data as any).message
+              : undefined;
+          const messageText = typeof message === 'string' ? message : '';
+
+          const isInvalidToken =
+            error.response.status === 401 ||
+            messageText.includes('Bad credentials') ||
+            messageText.includes('must authenticate') ||
+            messageText.includes('Resource not accessible by integration');
+
+          if (isInvalidToken) {
             console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`);
             await markTokenExhausted(tokenIndex, Math.floor(Date.now() / 1000) + 86400);
             continue; // try the next-best token immediately, no backoff
@@ -143,8 +155,8 @@ class GitHubGraphqlClient {
 
           if (
             error.response.status === 403 &&
-            (error.response.data?.message?.includes('rate limit exceeded') ||
-              error.response.data?.message?.includes('secondary rate limit'))
+            (messageText.includes('rate limit exceeded') ||
+              messageText.includes('secondary rate limit'))
           ) {
             const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
             console.error(`[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`);
