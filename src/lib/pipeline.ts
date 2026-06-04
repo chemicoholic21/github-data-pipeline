@@ -188,59 +188,14 @@ async function syncToLegacyTables(
     return;
   }
 
-  // Sync to legacy 'users_old' table
-  const legacyUserData = {
-    username: user.username,
-    name: user.name ?? null,
-    avatarUrl: user.avatarUrl ?? null,
-    bio: user.bio ?? null,
-    company: user.company ?? null,
-    blog: user.blog ?? null,
-    location: user.location ?? null,
-    email: user.email ?? null,
-    twitterUsername: user.twitterUsername ?? null,
-    hireable: user.hireable ?? null,
-    websiteUrl: user.blog ?? null,
-    followers: user.followers ?? 0,
-    following: user.following ?? 0,
-    publicRepos: 0,
-    score: agg.totalScore ?? 0,
-    lastFetched: new Date(),
-    updatedAt: new Date(),
-  };
-
-  await db.insert(usersOld).values(legacyUserData).onConflictDoUpdate({
-    target: usersOld.username,
-    set: legacyUserData,
-  });
-  console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
-
-  // Sync to leaderboard table
-  const leaderboardData = {
-    username: user.username,
-    name: user.name ?? null,
-    avatarUrl: user.avatarUrl ?? null,
-    totalScore: agg.totalScore,
-    // Profile fields - propagate from githubUsers
-    company: user.company ?? null,
-    blog: user.blog ?? null,
-    location: user.location ?? null,
-    email: user.email ?? null,
-    bio: user.bio ?? null,
-    twitterUsername: user.twitterUsername ?? null,
-    linkedin: linkedin ?? null,
-    hireable: user.hireable ?? false,
-    updatedAt: new Date(),
-  };
-
+  // ---------------------------------------------------------------------------
+  // PRIMARY WRITE FIRST: the real `leaderboard` table is the one that matters,
+  // so write it before the legacy tables. Previously the legacy writes ran
+  // first, and if either threw, this write was skipped and the leaderboard went
+  // stale. Use raw SQL to avoid schema mismatch issues.
+  // ---------------------------------------------------------------------------
   console.log(`[SYNC] Leaderboard data for ${username}: location="${user.location ?? 'null'}"`);
 
-  await db.insert(leaderboardOld).values(leaderboardData).onConflictDoUpdate({
-    target: leaderboardOld.username,
-    set: leaderboardData,
-  });
-
-  // Sync to leaderboard using raw SQL to avoid schema mismatch issues
   await db.execute(sql`
     INSERT INTO leaderboard (username, name, avatar_url, bio, location, company, blog, url, email, twitter_username, linkedin, hireable, followers, following, public_repos, total_score, updated_at)
     VALUES (
@@ -281,6 +236,67 @@ async function syncToLegacyTables(
       updated_at = NOW()
   `);
   console.log(`[SYNC] ✅ Synced ${username} to leaderboard`);
+
+  // ---------------------------------------------------------------------------
+  // LEGACY MIRRORS (best-effort): isolate these so a failure in either one can
+  // never block the primary leaderboard write above.
+  // ---------------------------------------------------------------------------
+  try {
+    const legacyUserData = {
+      username: user.username,
+      name: user.name ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      bio: user.bio ?? null,
+      company: user.company ?? null,
+      blog: user.blog ?? null,
+      location: user.location ?? null,
+      email: user.email ?? null,
+      twitterUsername: user.twitterUsername ?? null,
+      hireable: user.hireable ?? null,
+      websiteUrl: user.blog ?? null,
+      followers: user.followers ?? 0,
+      following: user.following ?? 0,
+      publicRepos: 0,
+      score: agg.totalScore ?? 0,
+      lastFetched: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await db.insert(usersOld).values(legacyUserData).onConflictDoUpdate({
+      target: usersOld.username,
+      set: legacyUserData,
+    });
+    console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
+  } catch (error: any) {
+    console.error(`[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${error.message}`);
+  }
+
+  try {
+    const leaderboardData = {
+      username: user.username,
+      name: user.name ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      totalScore: agg.totalScore,
+      // Profile fields - propagate from githubUsers
+      company: user.company ?? null,
+      blog: user.blog ?? null,
+      location: user.location ?? null,
+      email: user.email ?? null,
+      bio: user.bio ?? null,
+      twitterUsername: user.twitterUsername ?? null,
+      linkedin: linkedin ?? null,
+      hireable: user.hireable ?? false,
+      updatedAt: new Date(),
+    };
+
+    await db.insert(leaderboardOld).values(leaderboardData).onConflictDoUpdate({
+      target: leaderboardOld.username,
+      set: leaderboardData,
+    });
+    console.log(`[SYNC] ✅ Synced ${username} to leaderboard_old table`);
+  } catch (error: any) {
+    console.error(`[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${error.message}`);
+  }
 }
 
 /**
@@ -461,34 +477,73 @@ export async function analyzeUserSkills(username: string) {
 }
 
 export async function runPipeline(username: string, forceRefresh = false): Promise<boolean> {
-  try {
-    console.log(`\n[PIPELINE] Starting for ${username}...`);
+  console.log(`\n[PIPELINE] Starting for ${username}...`);
 
+  // Each stage runs independently. A failure in an earlier stage (e.g. a
+  // rate-limited repo fetch, or a transient scoring error) must NOT prevent the
+  // leaderboard sync from running — otherwise api_cache/github_users get fresh
+  // data while the leaderboard is left stale. We therefore isolate every stage
+  // and ALWAYS attempt Stage 3 (the leaderboard write), then only advance
+  // scraped_at when the leaderboard actually updated.
+  let scrapeOk = false;
+  let syncOk = false;
+  let linkedin: string | null = null;
+
+  // Stage 1: scrape fresh data (also refreshes api_cache + github_users/repos/PRs)
+  try {
     console.log(`[PIPELINE] Stage 1: Scraping user data...`);
     const scrapedUser = await scrapeUser(username, forceRefresh);
+    linkedin = scrapedUser.linkedin ?? null;
+    scrapeOk = true;
     console.log(`[PIPELINE] Stage 1 ✅ Complete`);
+  } catch (error: any) {
+    console.error(`[PIPELINE] ⚠️ Stage 1 (scrape) failed for ${username}: ${error.message}`);
+    if (error.stack) console.error(error.stack);
+    // Continue: we may still have prior profile/score data to sync forward.
+  }
 
+  // Stage 2: recompute per-repo scores from whatever PR data we have
+  try {
     console.log(`[PIPELINE] Stage 2: Computing repo scores...`);
     await updateUserRepoScores(username);
     console.log(`[PIPELINE] Stage 2 ✅ Complete`);
+  } catch (error: any) {
+    console.error(`[PIPELINE] ⚠️ Stage 2 (scores) failed for ${username}: ${error.message}`);
+    if (error.stack) console.error(error.stack);
+  }
 
+  // Stage 3: aggregate + sync to leaderboard — the critical write. Always run it.
+  try {
     console.log(`[PIPELINE] Stage 3: Aggregating scores...`);
-    await updateUserScores(username, scrapedUser.linkedin ?? null);
+    await updateUserScores(username, linkedin);
+    syncOk = true;
     console.log(`[PIPELINE] Stage 3 ✅ Complete`);
+  } catch (error: any) {
+    console.error(`[PIPELINE] ❌ Stage 3 (LEADERBOARD SYNC) failed for ${username}: ${error.message}`);
+    if (error.stack) console.error(error.stack);
+  }
 
+  // Stage 4: skill scores — a leaderboard UPDATE; failure here doesn't undo Stage 3
+  try {
     console.log(`[PIPELINE] Stage 4: Analyzing skills...`);
     await analyzeUserSkills(username);
     console.log(`[PIPELINE] Stage 4 ✅ Complete`);
+  } catch (error: any) {
+    console.error(`[PIPELINE] ⚠️ Stage 4 (skills) failed for ${username}: ${error.message}`);
+    if (error.stack) console.error(error.stack);
+  }
 
+  // Only mark the profile "fresh" when we actually scraped fresh data AND the
+  // leaderboard sync succeeded. Otherwise leave scraped_at untouched so the
+  // refresh worker re-selects this user next pass instead of freezing it.
+  if (scrapeOk && syncOk) {
     await markGithubUserScraped(username);
     console.log(`[PIPELINE] ✅ Pipeline complete for ${username}`);
     return true;
-  } catch (error: any) {
-    console.error(`[PIPELINE] ❌ FAILED for ${username}: ${error.message}`);
-    if (error.stack) {
-      console.error(error.stack);
-    }
-    console.log(`[PIPELINE] Continuing despite error for ${username}`);
-    return false;
   }
+
+  console.log(
+    `[PIPELINE] ⚠️ Pipeline incomplete for ${username} (scrape=${scrapeOk}, leaderboardSync=${syncOk}) — not advancing scraped_at`,
+  );
+  return false;
 }
