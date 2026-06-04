@@ -460,7 +460,7 @@ export async function analyzeUserSkills(username: string) {
   }
 }
 
-export async function runPipeline(username: string, forceRefresh = false) {
+export async function runPipeline(username: string, forceRefresh = false): Promise<boolean> {
   try {
     console.log(`\n[PIPELINE] Starting for ${username}...`);
 
@@ -482,12 +482,13 @@ export async function runPipeline(username: string, forceRefresh = false) {
 
     await markGithubUserScraped(username);
     console.log(`[PIPELINE] ✅ Pipeline complete for ${username}`);
+    return true;
   } catch (error: any) {
     console.error(`[PIPELINE] ❌ FAILED for ${username}: ${error.message}`);
     if (error.stack) {
       console.error(error.stack);
     }
-    // Don't throw - allow pipeline to continue with other users
     console.log(`[PIPELINE] Continuing despite error for ${username}`);
+    return false;
   }
 }

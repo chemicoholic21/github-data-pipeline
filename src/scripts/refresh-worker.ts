@@ -35,6 +35,8 @@ const PER_USER_DELAY_MS = Number(process.env.PER_USER_DELAY_MS ?? 1500);
 const IDLE_SLEEP_MS = Number(process.env.IDLE_SLEEP_MS ?? 5 * 60_000);
 const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
+const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
+const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -144,12 +146,34 @@ async function main() {
         throw e; // unknown error → bubble up, let the launcher restart us
       }
 
-      try {
-        await runPipeline(username, true);
+      let success = false;
+      for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+        try {
+          success = await runPipeline(username, true);
+          if (success) break;
+
+          console.log(
+            `[worker] ${username} failed (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`
+          );
+        } catch (e) {
+          console.error(
+            `[worker] ${username} threw (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}):`,
+            (e as Error).message
+          );
+          success = false;
+        }
+
+        if (attempt < RETRY_MAX_ATTEMPTS) {
+          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+          console.log(`[worker] retrying ${username} in ${delay / 1000}s...`);
+          await sleep(delay);
+        }
+      }
+
+      if (success) {
         totalProcessed++;
-      } catch (e) {
-        // runPipeline already catches its own errors, but be defensive.
-        console.error(`[worker] runPipeline threw for ${username}:`, (e as Error).message);
+      } else {
+        console.log(`[worker] skipping ${username} after ${RETRY_MAX_ATTEMPTS} failed attempts`);
       }
 
       await sleep(PER_USER_DELAY_MS);
