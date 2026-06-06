@@ -19,21 +19,27 @@ All GraphQL responses are cached in PostgreSQL (SHA-256 keyed, 30-day TTL). Mult
 
 ## Setup
 
-**Prerequisites:** Node.js 20+, pnpm, PostgreSQL
+**Prerequisites:** Node.js 20+, npm (or npx/tsx), PostgreSQL
 
 ```bash
 git clone https://github.com/chemicoholic21/github-data-pipeline.git
 cd github-data-pipeline
-pnpm install
+npm install         # or: npm ci
 cp .env.example .env   # add DATABASE_URL and GitHub tokens
-pnpm run db:push
+# If you prefer the tsx runtime: use `npx tsx` for direct TypeScript execution
+npm run db:push
 ```
 
 **Run the pipeline:**
 
 ```bash
-pnpm run bulk-discover "Chennai"
-pnpm run bulk-discover "San Francisco" 0 1   # with start index and page
+# Use npm to run the package scripts
+npm run bulk-discover "Chennai"
+npm run bulk-discover -- "San Francisco" 0 1   # with start index and page
+
+# Or run the TypeScript entry directly with npx/tsx
+npx tsx src/scripts/bulk-discover.ts "Chennai"
+npx tsx src/scripts/bulk-discover.ts "San Francisco" 0 1
 ```
 
 ---
@@ -72,15 +78,19 @@ This pipeline:
 Discovers developers by location, fetches their repos and PRs, scores them, and writes everything to the database.
 
 ```bash
-# Single region
-pnpm run bulk-discover "Bengaluru"
+# Single region (npm)
+npm run bulk-discover "Bengaluru"
 
 # Multiple regions in one run
-pnpm run bulk-discover "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
+npm run bulk-discover -- "Bengaluru, San Francisco, London, Berlin, Mumbai, Beijing"
 
 # Resume from a specific range index and page (useful after a crash or rate limit)
-pnpm run bulk-discover "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
-pnpm run bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
+npm run bulk-discover -- "Bengaluru, San Francisco" 0 5   # start at range 0, page 5
+npm run bulk-discover -- "Bengaluru, San Francisco" 2 1   # start at range 2, page 1
+
+# Or run directly with npx/tsx
+npx tsx src/scripts/bulk-discover.ts "Bengaluru"
+npx tsx src/scripts/bulk-discover.ts "Bengaluru, San Francisco" 0 5
 ```
 
 ---
@@ -90,11 +100,14 @@ pnpm run bulk-discover "Bengaluru, San Francisco" 2 1   # start at range 2, page
 Daemon that automatically refreshes stale GitHub profiles (>30 days old). Runs indefinitely, picking the oldest users and re-running the full pipeline on each.
 
 ```bash
-# Start the refresh worker
-pnpm run refresh-worker
+# Start the refresh worker (npm)
+npm run refresh-worker
 
 # Or deploy via tmux for persistence
 deploy/run-worker.sh
+
+# Or run directly with npx/tsx
+npx tsx src/scripts/refresh-worker.ts
 ```
 
 **Environment tunables:**
@@ -136,8 +149,13 @@ npx tsx src/scripts/populate-leaderboard-from-cache.ts --offset=1000 --limit=500
 Use these to recompute scores or refresh the leaderboard after schema changes or bulk imports. Much faster than the TypeScript equivalents.
 
 ```bash
-pnpm run sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
-pnpm run sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
+# Using npm
+npm run sql:populate-analyses       # recompute skill scores from repos + PRs  (~2 min for 72K users)
+npm run sql:populate-leaderboard    # sync scored users → leaderboard          (~30s for 72K users)
+
+# Or use npx/tsx to run the TypeScript runner directly
+npx tsx src/scripts/run-sql.ts populate-analyses
+npx tsx src/scripts/run-sql.ts populate-leaderboard
 ```
 
 Run `populate-analyses` before `populate-leaderboard` if recomputing from scratch.
@@ -178,4 +196,4 @@ Full schema in `schema.sql`. Tables:
 | **Current** | `token_rate_limit` | Infra: rate limit tracking |
 | **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
 
-> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `pnpm run verify:rename`.
+> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `npm run verify:rename` or `npx tsx src/scripts/verify-rename.ts`.
