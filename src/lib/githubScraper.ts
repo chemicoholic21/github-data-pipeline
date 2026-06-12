@@ -1,5 +1,6 @@
 import { gitHubGraphqlClient } from '../github/graphqlClient.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
+import type { RepoHealthMetrics } from '../types/repoHealth.js';
 
 /**
  * Fragment for rate limit information in GraphQL responses
@@ -355,4 +356,196 @@ export async function fetchPullRequestsForRepo(owner: string, repo: string, forc
     mergedAt: node.mergedAt || '',
     createdAt: node.createdAt,
   }));
+}
+
+// =============================================================================
+// REPO HEALTH (contribution-friendliness) SCRAPING
+// =============================================================================
+
+interface RepoHealthResponse {
+  repository: {
+    nameWithOwner: string;
+    owner: { login: string };
+    name: string;
+    isArchived: boolean;
+    isDisabled: boolean;
+    pushedAt: string | null;
+    stargazerCount: number;
+    primaryLanguage: { name: string } | null;
+    mergedPRs: { totalCount: number };
+    closedPRs: { totalCount: number };
+    openPRs: { totalCount: number };
+    recentPRs: {
+      nodes: Array<{
+        state: string;
+        createdAt: string;
+        mergedAt: string | null;
+        author: { login: string } | null;
+        reviews: { nodes: Array<{ submittedAt: string | null }> };
+      }>;
+    };
+    openIssues: { totalCount: number };
+    goodFirstIssues: { totalCount: number };
+    helpWanted: { totalCount: number };
+    contributing: { __typename: string } | null;
+    codeOfConduct: { __typename: string } | null;
+    releases: { nodes: Array<{ createdAt: string }> };
+    mentionableUsers: { totalCount: number };
+  } | null;
+}
+
+// One round-trip captures every contribution-friendliness signal for a repo.
+// Crucially this is REPO-scoped (not user-scoped) so the PR sample is
+// representative of all contributors — not just maintainer self-merges.
+const GET_REPO_HEALTH_QUERY = `
+  query GetRepoHealth($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) {
+      nameWithOwner
+      owner { login }
+      name
+      isArchived
+      isDisabled
+      pushedAt
+      stargazerCount
+      primaryLanguage { name }
+      mergedPRs: pullRequests(states: MERGED) { totalCount }
+      closedPRs: pullRequests(states: CLOSED) { totalCount }
+      openPRs: pullRequests(states: OPEN) { totalCount }
+      recentPRs: pullRequests(
+        first: 50
+        states: [MERGED, CLOSED]
+        orderBy: { field: CREATED_AT, direction: DESC }
+      ) {
+        nodes {
+          state
+          createdAt
+          mergedAt
+          author { login }
+          reviews(first: 1) { nodes { submittedAt } }
+        }
+      }
+      openIssues: issues(states: OPEN) { totalCount }
+      goodFirstIssues: issues(states: OPEN, labels: ["good first issue"]) { totalCount }
+      helpWanted: issues(states: OPEN, labels: ["help wanted"]) { totalCount }
+      contributing: object(expression: "HEAD:CONTRIBUTING.md") { __typename }
+      codeOfConduct: object(expression: "HEAD:CODE_OF_CONDUCT.md") { __typename }
+      releases(first: 1, orderBy: { field: CREATED_AT, direction: DESC }) {
+        nodes { createdAt }
+      }
+      mentionableUsers { totalCount }
+    }
+  }
+`;
+
+const HOUR_MS = 3_600_000;
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    const lo = sorted[mid - 1] ?? 0;
+    const hi = sorted[mid] ?? 0;
+    return (lo + hi) / 2;
+  }
+  return sorted[mid] ?? null;
+}
+
+/**
+ * Fetches and derives contribution-friendliness metrics for a single repo.
+ *
+ * Returns null only if the repository is not found. All derived medians/ratios
+ * are null when the sampled PR window can't support them (the scorer treats
+ * those pillars as "no data" rather than penalizing the repo).
+ */
+export async function fetchRepoHealth(
+  owner: string,
+  name: string,
+  forceRefresh = false
+): Promise<RepoHealthMetrics | null> {
+  console.log(`[API] Fetching repo health: ${owner}/${name}`);
+  const res = await gitHubGraphqlClient.request<RepoHealthResponse>({
+    query: GET_REPO_HEALTH_QUERY,
+    variables: { owner, name },
+    operationName: 'GetRepoHealth',
+    useCache: true,
+    cacheTTL: 7 * 24 * 60 * 60 * 1000, // 7 days — health drifts faster than profiles
+    forceRefresh,
+  });
+
+  const repo = res.repository;
+  if (!repo) return null;
+
+  const ownerLogin = repo.owner?.login ?? owner;
+  const recent = repo.recentPRs?.nodes ?? [];
+
+  const mergeHours: number[] = [];
+  const firstReviewHours: number[] = [];
+  const mergedCreatedAt: number[] = [];
+  let mergedInSample = 0;
+  let externalMerged = 0;
+
+  for (const pr of recent) {
+    const created = Date.parse(pr.createdAt);
+    if (Number.isNaN(created)) continue;
+
+    // Time-to-first-review (any PR with a review counts).
+    const firstReview = pr.reviews?.nodes?.[0]?.submittedAt;
+    if (firstReview) {
+      const reviewed = Date.parse(firstReview);
+      if (!Number.isNaN(reviewed) && reviewed >= created) {
+        firstReviewHours.push((reviewed - created) / HOUR_MS);
+      }
+    }
+
+    if (pr.state === 'MERGED' && pr.mergedAt) {
+      const merged = Date.parse(pr.mergedAt);
+      if (!Number.isNaN(merged) && merged >= created) {
+        mergeHours.push((merged - created) / HOUR_MS);
+        mergedCreatedAt.push(created);
+        mergedInSample += 1;
+        if (pr.author?.login && pr.author.login !== ownerLogin) externalMerged += 1;
+      }
+    }
+  }
+
+  // Merge velocity: merged PRs in the sample / months the sample spans.
+  let mergeVelocityPerMonth: number | null = null;
+  if (mergedCreatedAt.length >= 2) {
+    const span = Math.max(...mergedCreatedAt) - Math.min(...mergedCreatedAt);
+    const months = Math.max(span / (30 * 24 * HOUR_MS), 1 / 30); // floor ~1 day
+    mergeVelocityPerMonth = mergedCreatedAt.length / months;
+  }
+
+  // Acceptance rate from repo-wide totals (closed = closed-without-merge).
+  const merged = repo.mergedPRs?.totalCount ?? 0;
+  const closed = repo.closedPRs?.totalCount ?? 0;
+  const acceptanceRate = merged + closed > 0 ? merged / (merged + closed) : null;
+
+  return {
+    fullName: repo.nameWithOwner ?? `${ownerLogin}/${repo.name}`,
+    ownerLogin,
+    repoName: repo.name,
+    primaryLanguage: repo.primaryLanguage?.name ?? null,
+    stars: repo.stargazerCount ?? 0,
+    isArchived: repo.isArchived ?? false,
+    isDisabled: repo.isDisabled ?? false,
+    pushedAt: repo.pushedAt ?? null,
+    lastReleaseAt: repo.releases?.nodes?.[0]?.createdAt ?? null,
+    mergedPrCount: merged,
+    closedPrCount: closed,
+    openPrCount: repo.openPRs?.totalCount ?? 0,
+    medianFirstReviewHours: median(firstReviewHours),
+    medianMergeHours: median(mergeHours),
+    acceptanceRate,
+    externalMergedRatio: mergedInSample > 0 ? externalMerged / mergedInSample : null,
+    mergeVelocityPerMonth,
+    openIssuesCount: repo.openIssues?.totalCount ?? 0,
+    goodFirstIssues: repo.goodFirstIssues?.totalCount ?? 0,
+    helpWantedIssues: repo.helpWanted?.totalCount ?? 0,
+    hasContributing: repo.contributing != null,
+    hasCodeOfConduct: repo.codeOfConduct != null,
+    mentionableUsers: repo.mentionableUsers?.totalCount ?? 0,
+    sampleSize: recent.length,
+  };
 }

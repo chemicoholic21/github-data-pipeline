@@ -210,6 +210,65 @@ export const githubPullRequests = pgTable('github_pull_requests', {
   createdAt: timestamp('created_at'),
 });
 
+// Per-repo CONTRIBUTION-FRIENDLINESS health + score.
+// One row per repo (keyed by full_name "owner/repo"). Populated by the
+// compute-repo-health worker from the GetRepoHealth GraphQL query, then
+// scored by computeContributionScore(). Distinct from user_repo_scores,
+// which measures a USER's impact on a repo.
+export const repoHealth = pgTable(
+  'repo_health',
+  {
+    fullName: text('full_name').primaryKey(),        // "owner/repo"
+    ownerLogin: text('owner_login').notNull(),
+    repoName: text('repo_name').notNull(),
+    primaryLanguage: text('primary_language'),
+    stars: integer('stars').notNull().default(0),
+
+    // Liveness / gates
+    isArchived: boolean('is_archived').notNull().default(false),
+    isDisabled: boolean('is_disabled').notNull().default(false),
+    pushedAt: timestamp('pushed_at'),
+    lastReleaseAt: timestamp('last_release_at'),
+
+    // Throughput / acceptance (raw signals)
+    mergedPrCount: integer('merged_pr_count').notNull().default(0),
+    closedPrCount: integer('closed_pr_count').notNull().default(0),
+    openPrCount: integer('open_pr_count').notNull().default(0),
+    medianFirstReviewHours: real('median_first_review_hours'),
+    medianMergeHours: real('median_merge_hours'),
+    acceptanceRate: real('acceptance_rate'),
+    externalMergedRatio: real('external_merged_ratio'),
+    mergeVelocityPerMonth: real('merge_velocity_per_month'),
+
+    // Newcomer-friendliness
+    openIssuesCount: integer('open_issues_count').notNull().default(0),
+    goodFirstIssues: integer('good_first_issues').notNull().default(0),
+    helpWantedIssues: integer('help_wanted_issues').notNull().default(0),
+    hasContributing: boolean('has_contributing').notNull().default(false),
+    hasCodeOfConduct: boolean('has_code_of_conduct').notNull().default(false),
+    mentionableUsers: integer('mentionable_users').notNull().default(0),
+    sampleSize: integer('sample_size').notNull().default(0),
+
+    // Computed pillar sub-scores (0..1) + combined score (0..100)
+    contributionScore: real('contribution_score').notNull().default(0),
+    responsivenessScore: real('responsiveness_score'),
+    throughputScore: real('throughput_score'),
+    acceptanceScore: real('acceptance_score'),
+    newcomerScore: real('newcomer_score'),
+    livenessScore: real('liveness_score'),
+    confidence: real('confidence').notNull().default(0),
+    gatedReason: text('gated_reason'),
+
+    scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
+    scoredAt: timestamp('scored_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    idxRepoHealthScore: index('idx_repo_health_score').on(table.contributionScore),
+    idxRepoHealthStars: index('idx_repo_health_stars').on(table.stars),
+    idxRepoHealthLang: index('idx_repo_health_lang').on(table.primaryLanguage),
+  })
+);
+
 // Per-repo scores for each user: score = stars × (userPRs / totalPRs)
 export const userRepoScores = pgTable('user_repo_scores', {
   id: serial('id').primaryKey(),
