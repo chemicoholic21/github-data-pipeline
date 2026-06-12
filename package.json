@@ -10,6 +10,8 @@
     "start": "node dist/cli.js",
     "bulk-discover": "tsx src/scripts/bulk-discover.ts",
     "refresh-worker": "tsx src/scripts/refresh-worker.ts",
+    "compute-repo-health": "tsx src/scripts/compute-repo-health.ts",
+    "test:repo-score": "tsx src/scripts/test-contribution-score.ts",
     "enrich-linkedin": "tsx src/scripts/enrich-linkedin-apify.ts",
     "enrich-linkedin-sf": "tsx src/scripts/enrich-linkedin-sf.ts",
     "db:push": "drizzle-kit push",

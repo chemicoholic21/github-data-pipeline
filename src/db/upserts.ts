@@ -1,6 +1,7 @@
 import { db } from './dbClient.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
-import { githubUsers, githubRepos, githubPullRequests, userRepoScores } from './schema.js';
+import type { RepoHealthMetrics, ContributionScore } from '../types/repoHealth.js';
+import { githubUsers, githubRepos, githubPullRequests, userRepoScores, repoHealth } from './schema.js';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -124,6 +125,53 @@ export async function upsertUserRepoScore(data: any) {
       target: [userRepoScores.username, userRepoScores.repoName],
       set: data,
     });
+}
+
+/**
+ * Upserts a repository's contribution-friendliness health metrics + score.
+ */
+export async function upsertRepoHealth(m: RepoHealthMetrics, s: ContributionScore) {
+  const values = {
+    fullName: m.fullName,
+    ownerLogin: m.ownerLogin,
+    repoName: m.repoName,
+    primaryLanguage: m.primaryLanguage,
+    stars: m.stars,
+    isArchived: m.isArchived,
+    isDisabled: m.isDisabled,
+    pushedAt: m.pushedAt ? new Date(m.pushedAt) : null,
+    lastReleaseAt: m.lastReleaseAt ? new Date(m.lastReleaseAt) : null,
+    mergedPrCount: m.mergedPrCount,
+    closedPrCount: m.closedPrCount,
+    openPrCount: m.openPrCount,
+    medianFirstReviewHours: m.medianFirstReviewHours,
+    medianMergeHours: m.medianMergeHours,
+    acceptanceRate: m.acceptanceRate,
+    externalMergedRatio: m.externalMergedRatio,
+    mergeVelocityPerMonth: m.mergeVelocityPerMonth,
+    openIssuesCount: m.openIssuesCount,
+    goodFirstIssues: m.goodFirstIssues,
+    helpWantedIssues: m.helpWantedIssues,
+    hasContributing: m.hasContributing,
+    hasCodeOfConduct: m.hasCodeOfConduct,
+    mentionableUsers: m.mentionableUsers,
+    sampleSize: m.sampleSize,
+    contributionScore: s.score,
+    responsivenessScore: s.responsiveness,
+    throughputScore: s.throughput,
+    acceptanceScore: s.acceptance,
+    newcomerScore: s.newcomer,
+    livenessScore: s.liveness,
+    confidence: s.confidence,
+    gatedReason: s.gatedReason,
+    scrapedAt: new Date(),
+    scoredAt: new Date(),
+  };
+
+  return await db
+    .insert(repoHealth)
+    .values(values)
+    .onConflictDoUpdate({ target: repoHealth.fullName, set: values });
 }
 
 export async function markGithubUserScraped(username: string) {
