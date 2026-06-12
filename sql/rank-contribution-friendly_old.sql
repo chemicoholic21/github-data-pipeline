@@ -1,10 +1,12 @@
--- v1 ranking: best-effort "active & reachable" repositories using ONLY data
--- already in the DB (no new scraping). This is an ACTIVITY/LIVENESS + REACH
--- score, NOT a true contribution-friendliness score:
+-- LEGACY ranking (superseded by sql/rank-contribution-friendly.sql).
+-- Best-effort "active & reachable" repositories using ONLY data already in the
+-- DB (no per-repo scrape). This is an ACTIVITY/LIVENESS + REACH score, NOT a
+-- true contribution-friendliness score:
 --   * merge timing comes from github_pull_requests, which only stores MERGED
 --     PRs authored by tracked users (often maintainers) -> optimistic bias.
 --   * no review latency, acceptance rate, or newcomer signals are available.
--- Use sql/rank-contribution-friendly.sql (v2) once repo_health is populated.
+-- Kept only as a fallback until repo_health is populated; prefer the primary
+-- query (sql/rank-contribution-friendly.sql), which reads real per-repo signals.
 --
 -- Components (each normalized 0..1):
 --   recency  = exp(-days_since_push / 90)               liveness
@@ -71,7 +73,7 @@ SELECT
         WHEN merge IS NOT NULL
             THEN 0.45 * recency + 0.30 * reach + 0.25 * merge
         ELSE 0.60 * recency + 0.40 * reach
-    END)::numeric, 2) AS v1_score
+    END)::numeric, 2) AS legacy_score
 FROM scored
-ORDER BY v1_score DESC, stars DESC
+ORDER BY legacy_score DESC, stars DESC
 LIMIT 100;

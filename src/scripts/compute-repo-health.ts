@@ -3,10 +3,10 @@
  *
  * Computes the CONTRIBUTION-FRIENDLINESS score for repositories — "is this a
  * good place to send a PR?" (reviewed + merged quickly, alive, newcomer-
- * friendly). This is the v2 of the recommended fix: it scrapes the missing
- * signals (reviews, closed/open PRs, issues, CONTRIBUTING/CoC, releases,
- * real isArchived) PER REPO — removing the maintainer-self-merge sample bias
- * that affects the user-scoped github_pull_requests table.
+ * friendly). It scrapes the signals missing from the existing pipeline
+ * (reviews, closed/open PRs, issues, CONTRIBUTING/CoC, releases, real
+ * isArchived) PER REPO — removing the maintainer-self-merge sample bias that
+ * affects the user-scoped github_pull_requests table.
  *
  * Flow:
  *   - Pick top github_repos by stars that lack a fresh repo_health row.

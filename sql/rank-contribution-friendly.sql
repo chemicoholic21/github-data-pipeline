@@ -1,6 +1,7 @@
--- v2 ranking: top repositories that are GREAT to contribute to.
--- Reads the scored repo_health table (populated by compute-repo-health worker).
--- Optional filters: language and minimum confidence.
+-- PRIMARY ranking: top repositories that are GREAT to contribute to.
+-- Reads the scored repo_health table (populated by the compute-repo-health
+-- worker via a per-repo scrape). Optional filters: language, min confidence.
+-- For the legacy existing-data-only proxy see rank-contribution-friendly_old.sql.
 --
 -- Usage:
 --   npx tsx src/scripts/run-sql.ts rank-contribution-friendly
