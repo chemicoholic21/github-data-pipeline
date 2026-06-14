@@ -33,20 +33,43 @@ export async function markTokenExhausted(index: number, resetTime: number = 0) {
     });
 }
 
-export async function getBestToken(): Promise<TokenInfo> {
-  const tokens = (await import('../utils/config.js')).config.githubTokens;
+/**
+ * Pick the token with the most remaining quota.
+ *
+ * @param allowedIndices Optional explicit partition of token indices to choose
+ *   from. When omitted, falls back to the process-wide `config.tokenIndices`
+ *   (set via GITHUB_TOKEN_INDICES); when that is also null, all tokens are
+ *   considered. This is how concurrent workers dedicate disjoint PAT subsets so
+ *   they don't drain a shared budget.
+ */
+export async function getBestToken(allowedIndices?: number[]): Promise<TokenInfo> {
+  const cfg = (await import('../utils/config.js')).config;
+  const tokens = cfg.githubTokens;
   if (tokens.length === 0) {
     throw new Error('No GitHub tokens found in environment variables.');
+  }
+
+  // Resolve the partition: explicit arg > process config > all tokens.
+  const partition = allowedIndices ?? cfg.tokenIndices ?? null;
+  const candidateIndices = (
+    partition && partition.length > 0 ? partition : tokens.map((_, i) => i)
+  ).filter((i) => i >= 0 && i < tokens.length);
+
+  if (candidateIndices.length === 0) {
+    throw new Error('No GitHub tokens available in the configured partition.');
   }
 
   const now = Math.floor(Date.now() / 1000);
   let bestTokenInfo: TokenInfo | null = null;
   let highestRemaining = -1;
 
-  console.log(`[TokenPool] Checking ${tokens.length} tokens at time ${now}`);
+  console.log(
+    `[TokenPool] Checking ${candidateIndices.length}/${tokens.length} tokens ` +
+      `(partition=${partition ? `[${candidateIndices.join(',')}]` : 'all'}) at time ${now}`
+  );
 
   try {
-    for (let i = 0; i < tokens.length; i++) {
+    for (const i of candidateIndices) {
       console.log(`[TokenPool] Processing token ${i}...`);
 
       let rows: (typeof tokenRateLimit.$inferSelect)[] = [];

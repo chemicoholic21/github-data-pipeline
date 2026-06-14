@@ -35,6 +35,7 @@ import { getBestToken } from '../github/tokenPool.js';
 import { fetchRepoHealth } from '../lib/githubScraper.js';
 import { computeContributionScore } from '../lib/scoring.js';
 import { upsertRepoHealth } from '../db/upserts.js';
+import { pauseRefresh, resumeRefresh } from '../utils/pauseSwitch.js';
 
 const MIN_STARS = Number(process.env.REPO_HEALTH_MIN_STARS ?? 100);
 const AFTER_DAYS = Number(process.env.REPO_HEALTH_AFTER_DAYS ?? 7);
@@ -42,6 +43,9 @@ const BATCH_SIZE = Number(process.env.LIMIT ?? process.env.REPO_HEALTH_BATCH_SIZ
 const PER_REPO_DELAY_MS = Number(process.env.PER_REPO_DELAY_MS ?? 1500);
 const IDLE_SLEEP_MS = Number(process.env.IDLE_SLEEP_MS ?? 5 * 60_000);
 const ONESHOT = process.env.ONESHOT === '1';
+// When set, pause the continuous refresh-worker for the duration of this
+// backfill so the two don't contend for the shared GitHub token budget.
+const PAUSE_REFRESH = process.env.PAUSE_REFRESH_DURING_BACKFILL === '1';
 const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
@@ -58,6 +62,11 @@ function installShutdown() {
   };
   process.on('SIGTERM', () => handler('SIGTERM'));
   process.on('SIGINT', () => handler('SIGINT'));
+  // Safety net: always clear the refresh pause flag when this process exits,
+  // however it exits (normal, signal, or uncaught error).
+  if (PAUSE_REFRESH) {
+    process.on('exit', () => resumeRefresh());
+  }
 }
 
 type RepoRow = { owner_login: string; repo_name: string; full_name: string };
@@ -131,8 +140,14 @@ async function main() {
   installShutdown();
   console.log(
     `[repo-health] starting (min_stars=${MIN_STARS}, after=${AFTER_DAYS}d, ` +
-      `batch=${BATCH_SIZE}, delay=${PER_REPO_DELAY_MS}ms, oneshot=${ONESHOT})`
+      `batch=${BATCH_SIZE}, delay=${PER_REPO_DELAY_MS}ms, oneshot=${ONESHOT}, ` +
+      `pause_refresh=${PAUSE_REFRESH})`
   );
+
+  if (PAUSE_REFRESH) {
+    const p = pauseRefresh('repo-health-backfill');
+    console.log(`[repo-health] paused refresh-worker via ${p} (cleared automatically on exit)`);
+  }
 
   let processed = 0;
 
@@ -169,10 +184,12 @@ async function main() {
   }
 
   console.log(`[repo-health] done. processed=${processed}`);
+  if (PAUSE_REFRESH) resumeRefresh();
   process.exit(0);
 }
 
 main().catch((err) => {
   console.error('[repo-health] fatal error:', err);
+  if (PAUSE_REFRESH) resumeRefresh();
   process.exit(1);
 });
