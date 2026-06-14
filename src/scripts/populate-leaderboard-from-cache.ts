@@ -84,8 +84,11 @@ interface CachedUserReposResponse {
       nodes: Array<{
         name: string;
         owner: { login: string };
+        description?: string | null;
         stargazerCount: number;
+        forkCount?: number;
         primaryLanguage: { name: string } | null;
+        createdAt?: string | null;
         pushedAt: string | null;
         isFork: boolean;
         pullRequests: { totalCount: number };
@@ -101,8 +104,11 @@ interface CachedUserReposResponse {
       nodes: Array<{
         name: string;
         owner: { login: string };
+        description?: string | null;
         stargazerCount: number;
+        forkCount?: number;
         primaryLanguage: { name: string } | null;
+        createdAt?: string | null;
         pushedAt: string | null;
         isFork: boolean;
         pullRequests: { totalCount: number };
@@ -238,8 +244,11 @@ function parseUserRepos(response: CachedUserReposResponse): Repository[] {
       uniqueReposMap.set(fullName, {
         name: node.name,
         ownerLogin: node.owner.login,
+        description: node.description ?? null,
         stargazerCount: node.stargazerCount ?? 0,
+        forkCount: node.forkCount ?? 0,
         primaryLanguage: node.primaryLanguage?.name ?? null,
+        createdAt: node.createdAt ?? null,
         pushedAt: node.pushedAt ?? null,
         isFork: node.isFork ?? false,
         mergedPrCount: node.pullRequests?.totalCount ?? 0,
