@@ -62,16 +62,16 @@ export async function upsertGithubRepo(repo: Repository) {
     repoName: repo.name, // This is the PK in live DB
     ownerLogin: repo.ownerLogin,
     fullName: fullName, // Unique indexed column "owner/repo"
-    description: null,
+    description: repo.description ?? null,
     primaryLanguage: repo.primaryLanguage,
     stars: repo.stargazerCount,
-    forks: 0,
+    forks: repo.forkCount ?? 0,
     watchers: 0,
     totalPrs: repo.mergedPrCount,
     isFork: repo.isFork,
     isArchived: false,
     topics: repo.topics,
-    createdAt: null,
+    createdAt: repo.createdAt ? new Date(repo.createdAt) : null,
     pushedAt: repo.pushedAt ? new Date(repo.pushedAt) : null,
     scrapedAt: new Date(),
   };

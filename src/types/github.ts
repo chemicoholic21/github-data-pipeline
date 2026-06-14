@@ -21,8 +21,11 @@ export interface User {
 export interface Repository {
   name: string;
   ownerLogin: string;
+  description: string | null;
   stargazerCount: number;
+  forkCount: number;
   primaryLanguage: string | null;
+  createdAt: string | null;
   pushedAt: string | null;
   isFork: boolean;
   mergedPrCount: number;

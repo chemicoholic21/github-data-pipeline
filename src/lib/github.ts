@@ -41,8 +41,11 @@ interface UserAnalysisResponse extends RateLimitFragment {
       nodes: Array<{
         name: string;
         owner: { login: string };
+        description: string | null;
         stargazerCount: number;
+        forkCount: number;
         primaryLanguage: { name: string } | null;
+        createdAt: string | null;
         pushedAt: string | null;
         isFork: boolean;
         pullRequests: { totalCount: number };
@@ -58,8 +61,11 @@ interface UserAnalysisResponse extends RateLimitFragment {
       nodes: Array<{
         name: string;
         owner: { login: string };
+        description: string | null;
         stargazerCount: number;
+        forkCount: number;
         primaryLanguage: { name: string } | null;
+        createdAt: string | null;
         pushedAt: string | null;
         isFork: boolean;
         pullRequests: { totalCount: number };
@@ -121,8 +127,11 @@ const USER_ANALYSIS_QUERY = `
         nodes {
           name
           owner { login }
+          description
           stargazerCount
+          forkCount
           primaryLanguage { name }
+          createdAt
           pushedAt
           isFork
           pullRequests(states: [MERGED]) {
@@ -150,8 +159,11 @@ const USER_ANALYSIS_QUERY = `
         nodes {
           name
           owner { login }
+          description
           stargazerCount
+          forkCount
           primaryLanguage { name }
+          createdAt
           pushedAt
           isFork
           pullRequests(states: [MERGED]) {
@@ -259,8 +271,11 @@ export async function fetchUserAnalysis(username: string): Promise<UserAnalysis>
           uniqueReposMap.set(fullName, {
             name: node.name,
             ownerLogin: node.owner.login,
+            description: node.description ?? null,
             stargazerCount: node.stargazerCount,
+            forkCount: node.forkCount ?? 0,
             primaryLanguage: node.primaryLanguage?.name ?? null,
+            createdAt: node.createdAt ?? null,
             pushedAt: node.pushedAt,
             isFork: node.isFork,
             mergedPrCount: node.pullRequests.totalCount,

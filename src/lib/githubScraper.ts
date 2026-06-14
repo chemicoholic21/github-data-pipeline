@@ -45,41 +45,32 @@ interface UserResponse extends RateLimitFragment {
 /**
  * GitHub User Repositories Response
  */
+interface RepoNode {
+  name: string;
+  owner: { login: string };
+  description: string | null;
+  stargazerCount: number;
+  forkCount: number;
+  primaryLanguage: { name: string } | null;
+  createdAt: string | null;
+  pushedAt: string | null;
+  isFork: boolean;
+  pullRequests: { totalCount: number };
+  repositoryTopics: {
+    nodes: Array<{ topic: { name: string } }>;
+  };
+  languages: {
+    nodes: Array<{ name: string }>;
+  };
+}
+
 interface UserReposResponse extends RateLimitFragment {
   user: {
     repositories: {
-      nodes: Array<{
-        name: string;
-        owner: { login: string };
-        stargazerCount: number;
-        primaryLanguage: { name: string } | null;
-        pushedAt: string | null;
-        isFork: boolean;
-        pullRequests: { totalCount: number };
-        repositoryTopics: {
-          nodes: Array<{ topic: { name: string } }>;
-        };
-        languages: {
-          nodes: Array<{ name: string }>;
-        };
-      }>;
+      nodes: Array<RepoNode>;
     };
     repositoriesContributedTo: {
-      nodes: Array<{
-        name: string;
-        owner: { login: string };
-        stargazerCount: number;
-        primaryLanguage: { name: string } | null;
-        pushedAt: string | null;
-        isFork: boolean;
-        pullRequests: { totalCount: number };
-        repositoryTopics: {
-          nodes: Array<{ topic: { name: string } }>;
-        };
-        languages: {
-          nodes: Array<{ name: string }>;
-        };
-      }>;
+      nodes: Array<RepoNode>;
     };
   };
 }
@@ -141,8 +132,11 @@ const GET_USER_REPOS_QUERY = `
         nodes {
           name
           owner { login }
+          description
           stargazerCount
+          forkCount
           primaryLanguage { name }
+          createdAt
           pushedAt
           isFork
           pullRequests(states: [MERGED]) {
@@ -170,8 +164,11 @@ const GET_USER_REPOS_QUERY = `
         nodes {
           name
           owner { login }
+          description
           stargazerCount
+          forkCount
           primaryLanguage { name }
+          createdAt
           pushedAt
           isFork
           pullRequests(states: [MERGED]) {
@@ -314,8 +311,11 @@ export async function fetchUserRepositories(username: string, forceRefresh = fal
       uniqueReposMap.set(fullName, {
         name: node.name,
         ownerLogin: node.owner.login,
+        description: node.description ?? null,
         stargazerCount: node.stargazerCount ?? 0,
+        forkCount: node.forkCount ?? 0,
         primaryLanguage: node.primaryLanguage?.name ?? null,
+        createdAt: node.createdAt ?? null,
         pushedAt: node.pushedAt ?? null,
         isFork: node.isFork ?? false,
         mergedPrCount: node.pullRequests?.totalCount ?? 0,
