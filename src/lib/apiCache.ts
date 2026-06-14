@@ -15,8 +15,8 @@ function parseCacheKey(cacheKey: string): { type: string; subtype: string; ref: 
   const parts = cacheKey.split(':');
   if (parts.length >= 3) {
     return {
-      type: parts[0],
-      subtype: parts[1],
+      type: parts[0]!,
+      subtype: parts[1]!,
       ref: parts.slice(2).join(':'), // Join remaining parts for ref
     };
   }
