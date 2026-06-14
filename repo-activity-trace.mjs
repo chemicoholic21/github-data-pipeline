@@ -1,6 +1,13 @@
 import pg from 'pg';
 const { Pool } = pg;
-const pool = new Pool({ connectionString: "postgresql://burhan:Burh%40nR3%40d%24@ep-aged-mouse-ai1o5rd0-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require" });
+// Read the connection string from the environment — never hardcode credentials.
+// Run with:  node --env-file=.env repo-activity-trace.mjs
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error('DATABASE_URL is not set. Run: node --env-file=.env repo-activity-trace.mjs');
+  process.exit(1);
+}
+const pool = new Pool({ connectionString });
 const c = await pool.connect();
 const q = (s,p=[]) => c.query(s,p).then(r=>r.rows);
 const pct = (n,d) => d ? (100*n/d).toFixed(1)+'%' : '0%';
