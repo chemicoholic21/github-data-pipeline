@@ -5,12 +5,15 @@ CREATE TABLE IF NOT EXISTS repo_health (
     full_name                  TEXT PRIMARY KEY,          -- "owner/repo"
     owner_login                TEXT NOT NULL,
     repo_name                  TEXT NOT NULL,
+    description                TEXT,                      -- GitHub "About" text
     primary_language           TEXT,
     stars                      INTEGER NOT NULL DEFAULT 0,
+    forks                      INTEGER NOT NULL DEFAULT 0,
 
     -- Liveness / gates
     is_archived                BOOLEAN NOT NULL DEFAULT FALSE,
     is_disabled                BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at                 TIMESTAMP,                 -- when the repo was created
     pushed_at                  TIMESTAMP,
     last_release_at            TIMESTAMP,
 
@@ -46,6 +49,13 @@ CREATE TABLE IF NOT EXISTS repo_health (
     scraped_at                 TIMESTAMP NOT NULL DEFAULT NOW(),
     scored_at                  TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- For tables created before description/forks/created_at existed: add them
+-- idempotently. Safe to run repeatedly. (CREATE TABLE IF NOT EXISTS above does
+-- NOT alter an existing table, so these ALTERs are required for live upgrades.)
+ALTER TABLE repo_health ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE repo_health ADD COLUMN IF NOT EXISTS forks       INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE repo_health ADD COLUMN IF NOT EXISTS created_at  TIMESTAMP;
 
 -- Score-sorted listing (only meaningful, non-gated rows)
 CREATE INDEX IF NOT EXISTS idx_repo_health_score

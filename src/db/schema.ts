@@ -221,12 +221,15 @@ export const repoHealth = pgTable(
     fullName: text('full_name').primaryKey(),        // "owner/repo"
     ownerLogin: text('owner_login').notNull(),
     repoName: text('repo_name').notNull(),
+    description: text('description'),                 // GitHub "About" text
     primaryLanguage: text('primary_language'),
     stars: integer('stars').notNull().default(0),
+    forks: integer('forks').notNull().default(0),
 
     // Liveness / gates
     isArchived: boolean('is_archived').notNull().default(false),
     isDisabled: boolean('is_disabled').notNull().default(false),
+    createdAt: timestamp('created_at'),              // when the repo was created
     pushedAt: timestamp('pushed_at'),
     lastReleaseAt: timestamp('last_release_at'),
 

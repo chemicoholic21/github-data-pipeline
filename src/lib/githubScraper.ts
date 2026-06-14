@@ -367,10 +367,13 @@ interface RepoHealthResponse {
     nameWithOwner: string;
     owner: { login: string };
     name: string;
+    description: string | null;
     isArchived: boolean;
     isDisabled: boolean;
+    createdAt: string | null;
     pushedAt: string | null;
     stargazerCount: number;
+    forkCount: number;
     primaryLanguage: { name: string } | null;
     mergedPRs: { totalCount: number };
     closedPRs: { totalCount: number };
@@ -403,10 +406,13 @@ const GET_REPO_HEALTH_QUERY = `
       nameWithOwner
       owner { login }
       name
+      description
       isArchived
       isDisabled
+      createdAt
       pushedAt
       stargazerCount
+      forkCount
       primaryLanguage { name }
       mergedPRs: pullRequests(states: MERGED) { totalCount }
       closedPRs: pullRequests(states: CLOSED) { totalCount }
@@ -526,10 +532,13 @@ export async function fetchRepoHealth(
     fullName: repo.nameWithOwner ?? `${ownerLogin}/${repo.name}`,
     ownerLogin,
     repoName: repo.name,
+    description: repo.description ?? null,
     primaryLanguage: repo.primaryLanguage?.name ?? null,
     stars: repo.stargazerCount ?? 0,
+    forkCount: repo.forkCount ?? 0,
     isArchived: repo.isArchived ?? false,
     isDisabled: repo.isDisabled ?? false,
+    createdAt: repo.createdAt ?? null,
     pushedAt: repo.pushedAt ?? null,
     lastReleaseAt: repo.releases?.nodes?.[0]?.createdAt ?? null,
     mergedPrCount: merged,

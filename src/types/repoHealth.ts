@@ -13,12 +13,15 @@ export interface RepoHealthMetrics {
   fullName: string; // "owner/repo"
   ownerLogin: string;
   repoName: string;
+  description: string | null; // GitHub "About" text
   primaryLanguage: string | null;
   stars: number;
+  forkCount: number;
 
   // Liveness / gates
   isArchived: boolean;
   isDisabled: boolean;
+  createdAt: string | null; // ISO, when the repo was created
   pushedAt: string | null; // ISO
   lastReleaseAt: string | null; // ISO, null if no releases
 
