@@ -29,6 +29,27 @@ import {
 } from './scoring.js';
 
 /**
+ * True when an error means "GitHub quota is exhausted right now" — i.e. the
+ * token pool is dry (`rate-limited-all-tokens`) or the API returned a primary/
+ * secondary rate-limit response (HTTP 403/429). These are transient: the right
+ * response is to back off and retry, never to advance scraped_at.
+ */
+export function isRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message ?? '';
+  if (
+    msg.includes('rate-limited-all-tokens') ||
+    msg.includes('secondary rate limit') ||
+    msg.includes('rate limit')
+  ) {
+    return true;
+  }
+  // Axios-shaped errors carry the HTTP status without us importing axios here.
+  const status = (error as { response?: { status?: number } }).response?.status;
+  return status === 403 || status === 429;
+}
+
+/**
  * STAGE 1: SCRAPE
  */
 export async function scrapeUser(username: string, forceRefresh = false): Promise<User> {
@@ -64,6 +85,18 @@ export async function scrapeUser(username: string, forceRefresh = false): Promis
           console.log(`  └─ [${repo.ownerLogin}/${repo.name}] Found ${userPrs.length} PRs.`);
         }
       } catch (error: unknown) {
+        // Rate-limit errors are transient and recoverable: do NOT swallow them.
+        // Re-throw so the whole user scrape fails, scraped_at is left untouched,
+        // and the refresh loop retries this user once the token pool resets —
+        // instead of marking it "done" with partially-missing PR data.
+        if (isRateLimitError(error)) {
+          console.error(
+            `  └─ [${repo.ownerLogin}/${repo.name}] ⏳ rate-limited — aborting user to retry later`
+          );
+          throw error;
+        }
+        // Persistent per-repo errors (deleted repo, 404, etc.) stay non-fatal:
+        // skipping one repo must not block the user forever.
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error(`  └─ [${repo.ownerLogin}/${repo.name}] ❌ Error: ${errorMsg}`);
       }
