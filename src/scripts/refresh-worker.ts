@@ -28,11 +28,14 @@ import { sql } from 'drizzle-orm';
 import { db, pool } from '../lib/db.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getBestToken } from '../github/tokenPool.js';
+import { isRefreshPaused, readPauseInfo } from '../utils/pauseSwitch.js';
 
 const REFRESH_AFTER_DAYS = Number(process.env.REFRESH_AFTER_DAYS ?? 30);
 const BATCH_SIZE = Number(process.env.REFRESH_BATCH_SIZE ?? 200);
 const PER_USER_DELAY_MS = Number(process.env.PER_USER_DELAY_MS ?? 1500);
 const IDLE_SLEEP_MS = Number(process.env.IDLE_SLEEP_MS ?? 5 * 60_000);
+// How often to re-check the pause flag while paused.
+const PAUSE_POLL_MS = Number(process.env.PAUSE_POLL_MS ?? 30_000);
 const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
@@ -106,8 +109,29 @@ async function main() {
   let totalProcessed = 0;
   let totalSkippedRateLimit = 0;
   const startedAt = Date.now();
+  let wasPaused = false;
 
   while (!stopping) {
+    // Cooperative pause: while the sentinel flag exists (e.g. a repo_health
+    // backfill is running), idle without touching the token pool so the other
+    // job gets the full GitHub budget.
+    if (isRefreshPaused()) {
+      if (!wasPaused) {
+        const info = readPauseInfo();
+        console.log(
+          `[worker] paused by ${info ? info.replace(/\n/g, ' ') : 'flag'} — ` +
+            `idling (polling every ${Math.round(PAUSE_POLL_MS / 1000)}s)`
+        );
+        wasPaused = true;
+      }
+      await sleep(PAUSE_POLL_MS);
+      continue;
+    }
+    if (wasPaused) {
+      console.log('[worker] resumed (pause flag cleared)');
+      wasPaused = false;
+    }
+
     let batch: string[];
     try {
       batch = await getStaleBatch(BATCH_SIZE);
@@ -132,6 +156,12 @@ async function main() {
 
     for (const username of batch) {
       if (stopping) break;
+      // Honor a pause requested mid-batch: stop promptly and let the outer
+      // loop drop into the idle/poll path.
+      if (isRefreshPaused()) {
+        console.log('[worker] pause requested mid-batch — stopping after current user boundary');
+        break;
+      }
 
       // Pre-flight: runPipeline swallows errors, so we check the pool BEFORE
       // calling it. If all PATs are dry, sleep until the earliest reset and retry.
