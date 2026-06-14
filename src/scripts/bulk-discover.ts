@@ -171,6 +171,7 @@ console.log(`\n🌍 Processing ${locations.length} location(s): ${locations.join
 (async () => {
   for (let i = 0; i < locations.length; i++) {
     const location = locations[i];
+    if (!location) continue;
     console.log(`\n${'='.repeat(60)}`);
     console.log(`📍 Location ${i + 1}/${locations.length}: ${location}`);
     console.log(`${'='.repeat(60)}\n`);

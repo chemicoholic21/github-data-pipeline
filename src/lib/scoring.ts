@@ -1,4 +1,4 @@
-import { UserAnalysis } from './github.js';
+import type { UserAnalysis } from '../types/github.js';
 import type { RepoHealthMetrics, ContributionScore } from '../types/repoHealth.js';
 
 export type ExperienceLevel =

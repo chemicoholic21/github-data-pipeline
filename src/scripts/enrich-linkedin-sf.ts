@@ -913,6 +913,7 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < users.length; i++) {
     const user = users[i];
+    if (!user) continue;
     stats.total++;
 
     logger.userProgress(

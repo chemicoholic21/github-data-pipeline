@@ -315,7 +315,7 @@ async function processUserFromCache(
       return false;
     }
 
-    const profileResponse = profileEntries[0].response as CachedUserProfileResponse;
+    const profileResponse = profileEntries[0]!.response as CachedUserProfileResponse;
     const responseType = detectResponseType(profileResponse);
 
     if (responseType !== 'user_profile') {
@@ -383,6 +383,7 @@ async function processUserFromCache(
         const urlMatch = nodes[0].url.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
         if (urlMatch) {
           const [, owner, repo] = urlMatch;
+          if (!owner || !repo) continue;
           const prs = parseRepoPRs(prResponse, owner, repo);
 
           // Filter PRs by this user
@@ -568,17 +569,17 @@ async function main() {
 
   for (const arg of args) {
     if (arg.startsWith('--username=')) {
-      targetUsername = arg.split('=')[1];
+      targetUsername = arg.split('=')[1] ?? null;
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg.startsWith('--batch-size=')) {
-      batchSize = parseInt(arg.split('=')[1], 10) || 1000;
+      batchSize = parseInt(arg.split('=')[1] ?? '', 10) || 1000;
     } else if (arg === '--skip-scoring') {
       skipScoring = true;
     } else if (arg.startsWith('--offset=')) {
-      offset = parseInt(arg.split('=')[1], 10) || 0;
+      offset = parseInt(arg.split('=')[1] ?? '', 10) || 0;
     } else if (arg.startsWith('--limit=')) {
-      limit = parseInt(arg.split('=')[1], 10) || null;
+      limit = parseInt(arg.split('=')[1] ?? '', 10) || null;
     } else if (arg === '--only-missing') {
       onlyMissing = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -663,6 +664,7 @@ Examples:
     // Process each user
     for (let i = 0; i < usersToProcess.length; i++) {
       const username = usersToProcess[i];
+      if (!username) continue;
       console.log(`\n[${i + 1}/${usersToProcess.length}] Processing: ${username}`);
 
       await processUserFromCache(username, dryRun, skipScoring, stats);
