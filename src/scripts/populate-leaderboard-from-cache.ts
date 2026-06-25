@@ -309,7 +309,12 @@ async function processUserFromCache(
       return false;
     }
 
-    const profileResponse = profileEntries[0]!.response as CachedUserProfileResponse;
+    const profileEntry = profileEntries[0];
+    if (!profileEntry) {
+      console.log(`  [${username}] ⚠️ No profile found in cache`);
+      return false;
+    }
+    const profileResponse = profileEntry.response as CachedUserProfileResponse;
     const responseType = detectResponseType(profileResponse);
 
     if (responseType !== 'user_profile') {

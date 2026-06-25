@@ -24,6 +24,7 @@ import {
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { computeRepoScore } from './scoring.js';
+import { getErrorMessage } from '../utils/async.js';
 
 /**
  * True when an error means "GitHub quota is exhausted right now" — i.e. the
@@ -300,9 +301,9 @@ async function syncToLegacyTables(
       set: legacyUserData,
     });
     console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
-  } catch (error: any) {
+  } catch (error) {
     console.error(
-      `[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${error.message}`
+      `[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${getErrorMessage(error)}`
     );
   }
 
@@ -329,9 +330,9 @@ async function syncToLegacyTables(
       set: leaderboardData,
     });
     console.log(`[SYNC] ✅ Synced ${username} to leaderboard_old table`);
-  } catch (error: any) {
+  } catch (error) {
     console.error(
-      `[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${error.message}`
+      `[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${getErrorMessage(error)}`
     );
   }
 }
@@ -428,11 +429,14 @@ const SKILL_CATEGORIES = {
   ],
 };
 
-function categorizeRepo(repo: any): string[] {
+function categorizeRepo(repo: {
+  topics: string[] | null;
+  primaryLanguage: string | null;
+}): string[] {
   const categories: Set<string> = new Set();
-  const allKeywords = (repo.topics || [])
+  const allKeywords = (repo.topics ?? [])
     .concat(repo.primaryLanguage ? [repo.primaryLanguage.toLowerCase()] : [])
-    .map((s: string) => s.toLowerCase());
+    .map((s) => s.toLowerCase());
 
   for (const [category, keywords] of Object.entries(SKILL_CATEGORIES)) {
     if (allKeywords.some((kw: string) => keywords.some((k) => kw.includes(k)))) {
@@ -464,12 +468,15 @@ export async function analyzeUserSkills(username: string) {
       .from(githubPullRequests)
       .where(eq(githubPullRequests.username, username));
 
-    const prsByRepo = new Map<string, any[]>();
+    type PrRow = (typeof userPrs)[number];
+    const prsByRepo = new Map<string, PrRow[]>();
     for (const pr of userPrs) {
-      if (!prsByRepo.has(pr.repoName)) {
-        prsByRepo.set(pr.repoName, []);
+      const existing = prsByRepo.get(pr.repoName);
+      if (existing) {
+        existing.push(pr);
+      } else {
+        prsByRepo.set(pr.repoName, [pr]);
       }
-      prsByRepo.get(pr.repoName)!.push(pr);
     }
 
     // Categorize repos and compute scores
@@ -481,7 +488,14 @@ export async function analyzeUserSkills(username: string) {
       data: 0,
     };
 
-    const topRepos: any[] = [];
+    const topRepos: Array<{
+      name: string;
+      owner: string;
+      stars: number;
+      prs: number;
+      score: number;
+      categories: string[];
+    }> = [];
     const languageFreq: Record<string, number> = {};
     const skillsSet = new Set<string>();
     let totalContributions = 0;
@@ -614,9 +628,11 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
     linkedin = scrapedUser.linkedin ?? null;
     scrapeOk = true;
     console.log(`[PIPELINE] Stage 1 ✅ Complete`);
-  } catch (error: any) {
-    console.error(`[PIPELINE] ⚠️ Stage 1 (scrape) failed for ${username}: ${error.message}`);
-    if (error.stack) console.error(error.stack);
+  } catch (error) {
+    console.error(
+      `[PIPELINE] ⚠️ Stage 1 (scrape) failed for ${username}: ${getErrorMessage(error)}`
+    );
+    if (error instanceof Error && error.stack) console.error(error.stack);
     // Continue: we may still have prior profile/score data to sync forward.
   }
 
@@ -625,9 +641,11 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
     console.log(`[PIPELINE] Stage 2: Computing repo scores...`);
     await updateUserRepoScores(username);
     console.log(`[PIPELINE] Stage 2 ✅ Complete`);
-  } catch (error: any) {
-    console.error(`[PIPELINE] ⚠️ Stage 2 (scores) failed for ${username}: ${error.message}`);
-    if (error.stack) console.error(error.stack);
+  } catch (error) {
+    console.error(
+      `[PIPELINE] ⚠️ Stage 2 (scores) failed for ${username}: ${getErrorMessage(error)}`
+    );
+    if (error instanceof Error && error.stack) console.error(error.stack);
   }
 
   // Stage 3: aggregate + sync to leaderboard — the critical write. Always run it.
@@ -636,11 +654,11 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
     await updateUserScores(username, linkedin);
     syncOk = true;
     console.log(`[PIPELINE] Stage 3 ✅ Complete`);
-  } catch (error: any) {
+  } catch (error) {
     console.error(
-      `[PIPELINE] ❌ Stage 3 (LEADERBOARD SYNC) failed for ${username}: ${error.message}`
+      `[PIPELINE] ❌ Stage 3 (LEADERBOARD SYNC) failed for ${username}: ${getErrorMessage(error)}`
     );
-    if (error.stack) console.error(error.stack);
+    if (error instanceof Error && error.stack) console.error(error.stack);
   }
 
   // Stage 4: skill scores — a leaderboard UPDATE; failure here doesn't undo Stage 3
@@ -648,9 +666,11 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
     console.log(`[PIPELINE] Stage 4: Analyzing skills...`);
     await analyzeUserSkills(username);
     console.log(`[PIPELINE] Stage 4 ✅ Complete`);
-  } catch (error: any) {
-    console.error(`[PIPELINE] ⚠️ Stage 4 (skills) failed for ${username}: ${error.message}`);
-    if (error.stack) console.error(error.stack);
+  } catch (error) {
+    console.error(
+      `[PIPELINE] ⚠️ Stage 4 (skills) failed for ${username}: ${getErrorMessage(error)}`
+    );
+    if (error instanceof Error && error.stack) console.error(error.stack);
   }
 
   // Only mark the profile "fresh" when we actually scraped fresh data AND the

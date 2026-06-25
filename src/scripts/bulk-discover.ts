@@ -7,6 +7,12 @@ import { runPipeline } from '../lib/pipeline.js';
 import { getCachedUser } from '../lib/cache.js';
 import { sleep } from '../utils/async.js';
 
+/** GitHub/Octokit-style error carrying an HTTP status and response headers. */
+type HttpError = Error & {
+  status?: number;
+  headers?: Record<string, string | undefined>;
+};
+
 const CONCURRENCY = 1;
 const WAIT_TIME_MS = 5 * 60 * 1000; // 5 minutes for "all tokens exhausted" case
 const BATCH_DELAY_MS = 1500; // 1.5 seconds between batches
@@ -108,11 +114,11 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
               batchSuccess = true;
               await sleep(BATCH_DELAY_MS);
             } catch (batchError: unknown) {
-              const batchErrorObj =
+              const batchErrorObj: HttpError =
                 batchError instanceof Error ? batchError : new Error(String(batchError));
               if (
-                (batchErrorObj as any).message === 'rate-limited-all-tokens' ||
-                (batchErrorObj as any).status === 403
+                batchErrorObj.message === 'rate-limited-all-tokens' ||
+                batchErrorObj.status === 403
               ) {
                 console.log(`      🕒 Rate limit hit. Rotating token immediately...`);
                 // If it was a 403, getBestToken will naturally pick a new one next time
@@ -123,8 +129,8 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
                 console.error(
                   `      ⚠️ Batch error for ${todo.join(',')}: ${batchErrorObj.message}`
                 );
-                if ((batchErrorObj as any).stack) {
-                  console.error((batchErrorObj as any).stack);
+                if (batchErrorObj.stack) {
+                  console.error(batchErrorObj.stack);
                 }
                 batchSuccess = true;
               }
@@ -139,20 +145,18 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
         if (usernames.length < 100) hasMore = false;
         page++;
       } catch (e: unknown) {
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        if ((errorObj as any).status === 403) {
-          const retryAfter = parseInt((errorObj as any).headers?.['retry-after'] || '0', 10);
-          const resetTime = parseInt((errorObj as any).headers?.['x-ratelimit-reset'] || '0', 10);
-          console.log(
-            `  🚫 Token ${(tokenInfo as any)?.index} Rate Limited. Retry-After: ${retryAfter}s`
-          );
-          await markTokenExhausted((tokenInfo as any)?.index || 0, resetTime);
+        const errorObj: HttpError = e instanceof Error ? e : new Error(String(e));
+        if (errorObj.status === 403) {
+          const retryAfter = parseInt(errorObj.headers?.['retry-after'] || '0', 10);
+          const resetTime = parseInt(errorObj.headers?.['x-ratelimit-reset'] || '0', 10);
+          console.log(`  🚫 Token ${tokenInfo?.index} Rate Limited. Retry-After: ${retryAfter}s`);
+          await markTokenExhausted(tokenInfo?.index || 0, resetTime);
           // Don't increment page, just retry with a new token
           continue;
         } else {
           console.error(`  Range Error:`, errorObj.message);
-          if ((errorObj as any).stack) {
-            console.error((errorObj as any).stack);
+          if (errorObj.stack) {
+            console.error(errorObj.stack);
           }
           hasMore = false;
         }

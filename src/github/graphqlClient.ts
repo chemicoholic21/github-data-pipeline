@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import crypto from 'crypto';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from './tokenPool.js';
 import { getCachedApiResponse, setCachedApiResponse } from '../lib/apiCache.js';
+import { getErrorMessage } from '../utils/async.js';
 
 const GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
 
@@ -123,8 +124,8 @@ class GitHubGraphqlClient {
             console.log(`[CACHE] Writing to api_cache: ${cacheKey.substring(0, 50)}...`);
             await setCachedApiResponse(cacheKey, result, cacheTTL);
             console.log(`[CACHE] ✅ Successfully cached`);
-          } catch (cacheError: any) {
-            console.error(`[CACHE] ❌ Failed to write cache: ${cacheError.message}`);
+          } catch (cacheError) {
+            console.error(`[CACHE] ❌ Failed to write cache: ${getErrorMessage(cacheError)}`);
             // Don't crash the pipeline, just log the error
           }
         }
@@ -139,7 +140,7 @@ class GitHubGraphqlClient {
 
           const message =
             typeof error.response.data === 'object' && error.response.data !== null
-              ? (error.response.data as any).message
+              ? (error.response.data as { message?: unknown }).message
               : undefined;
           const messageText = typeof message === 'string' ? message : '';
 

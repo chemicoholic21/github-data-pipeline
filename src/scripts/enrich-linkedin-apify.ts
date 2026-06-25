@@ -25,7 +25,7 @@
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
 import { checkOpenToWork, type OpenToWorkResult } from '../lib/linkedinOpenToWork.js';
-import { sleep } from '../utils/async.js';
+import { sleep, getErrorMessage } from '../utils/async.js';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -77,8 +77,8 @@ const db = {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`;
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
       console.log('   ✓ Database columns ready\n');
-    } catch (error: any) {
-      console.log(`   ⚠ Column note: ${error.message}\n`);
+    } catch (error) {
+      console.log(`   ⚠ Column note: ${getErrorMessage(error)}\n`);
     }
   },
 
@@ -280,8 +280,8 @@ async function main(): Promise<void> {
           stats.openToWork++;
         }
       }
-    } catch (error: any) {
-      console.log(`   ✗ Unexpected error: ${error.message}`);
+    } catch (error) {
+      console.log(`   ✗ Unexpected error: ${getErrorMessage(error)}`);
       stats.failed++;
 
       // Still update timestamp to avoid re-processing
@@ -304,6 +304,6 @@ async function main(): Promise<void> {
 
 // Run the script
 main().catch((error) => {
-  console.error('\n❌ Fatal error:', error.message);
+  console.error('\n❌ Fatal error:', getErrorMessage(error));
   process.exit(1);
 });

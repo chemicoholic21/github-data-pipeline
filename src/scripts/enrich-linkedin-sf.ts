@@ -32,7 +32,7 @@
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
 import { checkOpenToWork, type OpenToWorkResult } from '../lib/linkedinOpenToWork.js';
-import { sleep } from '../utils/async.js';
+import { sleep, getErrorMessage } from '../utils/async.js';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -199,29 +199,29 @@ const db = {
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`;
       console.log('   ✓ Column is_open_to_work ready');
-    } catch (error: any) {
-      console.log(`   ⚠ Column is_open_to_work: ${error.message}`);
+    } catch (error) {
+      console.log(`   ⚠ Column is_open_to_work: ${getErrorMessage(error)}`);
     }
 
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
       console.log('   ✓ Column otw_scraped_at ready');
-    } catch (error: any) {
-      console.log(`   ⚠ Column otw_scraped_at: ${error.message}`);
+    } catch (error) {
+      console.log(`   ⚠ Column otw_scraped_at: ${getErrorMessage(error)}`);
     }
 
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_permanent_failure BOOLEAN DEFAULT FALSE`;
       console.log('   ✓ Column otw_permanent_failure ready');
-    } catch (error: any) {
-      console.log(`   ⚠ Column otw_permanent_failure: ${error.message}`);
+    } catch (error) {
+      console.log(`   ⚠ Column otw_permanent_failure: ${getErrorMessage(error)}`);
     }
 
     try {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_error_code TEXT`;
       console.log('   ✓ Column otw_error_code ready');
-    } catch (error: any) {
-      console.log(`   ⚠ Column otw_error_code: ${error.message}`);
+    } catch (error) {
+      console.log(`   ⚠ Column otw_error_code: ${getErrorMessage(error)}`);
     }
 
     console.log('');
@@ -812,8 +812,8 @@ async function main(): Promise<void> {
         stats.transientFailures++;
         stats.failed++;
       }
-    } catch (error: any) {
-      console.log(`   ✗ Unexpected error: ${error.message}`);
+    } catch (error) {
+      console.log(`   ✗ Unexpected error: ${getErrorMessage(error)}`);
       stats.failed++;
       stats.transientFailures++;
       // Don't mark as permanent - unexpected errors should be retried
@@ -831,6 +831,6 @@ async function main(): Promise<void> {
 
 // Run the script
 main().catch((error) => {
-  console.error('\n❌ Fatal error:', error.message);
+  console.error('\n❌ Fatal error:', getErrorMessage(error));
   process.exit(1);
 });

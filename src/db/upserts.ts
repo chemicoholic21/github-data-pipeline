@@ -117,7 +117,7 @@ export async function insertPullRequests(prList: PullRequest[]) {
 /**
  * Upserts repository scores for a user.
  */
-export async function upsertUserRepoScore(data: any) {
+export async function upsertUserRepoScore(data: typeof userRepoScores.$inferInsert) {
   return await db
     .insert(userRepoScores)
     .values(data)
