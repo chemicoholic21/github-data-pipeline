@@ -154,11 +154,11 @@ const CONFIG = {
   apifyApiToken: APIFY_API_TOKEN,
 
   // Scraping settings
-  skipCount: 250,          // Skip top N profiles in the SF Bay Area
-  fetchCount: 4000,        // Fetch next N profiles with LinkedIn (not yet scraped)
-  requestDelayMs: 4000,    // Delay between requests to avoid rate limiting
-  maxRetries: 2,           // Number of retries for failed requests
-  initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
+  skipCount: 250, // Skip top N profiles in the SF Bay Area
+  fetchCount: 4000, // Fetch next N profiles with LinkedIn (not yet scraped)
+  requestDelayMs: 4000, // Delay between requests to avoid rate limiting
+  maxRetries: 2, // Number of retries for failed requests
+  initialRetryDelayMs: 5000, // Initial delay before first retry (doubles each retry)
 };
 
 // Initialize database connection
@@ -182,8 +182,8 @@ export interface OpenToWorkResult {
   success: boolean;
   openToWork: boolean | null;
   error?: string;
-  isRetryable?: boolean;  // Indicates if the error is transient
-  errorCode?: string;     // Error code for tracking
+  isRetryable?: boolean; // Indicates if the error is transient
+  errorCode?: string; // Error code for tracking
 }
 
 interface UpdateOptions {
@@ -195,7 +195,7 @@ interface UpdateOptions {
 // Apify API Client
 // ============================================================================
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Determine if an HTTP status code is retryable
@@ -209,13 +209,15 @@ function isRetryableStatusCode(status: number): boolean {
  */
 function isRetryableError(error: string | undefined): boolean {
   if (!error) return false;
-  return error.includes('timeout') ||
-         error.includes('timed out') ||
-         error.includes('ETIMEDOUT') ||
-         error.includes('ECONNRESET') ||
-         error.includes('ECONNREFUSED') ||
-         error.includes('HTTP 5') ||
-         error.includes('HTTP 429');
+  return (
+    error.includes('timeout') ||
+    error.includes('timed out') ||
+    error.includes('ETIMEDOUT') ||
+    error.includes('ECONNRESET') ||
+    error.includes('ECONNREFUSED') ||
+    error.includes('HTTP 5') ||
+    error.includes('HTTP 429')
+  );
 }
 
 /**
@@ -229,9 +231,9 @@ async function checkOpenToWorkOnce(
 
   try {
     const response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         linkedin_url: linkedinUrl,
@@ -269,13 +271,13 @@ async function checkOpenToWorkOnce(
       }
 
       // Handle different response formats
-      if (result.data && typeof result.data.open_to_work === "boolean") {
+      if (result.data && typeof result.data.open_to_work === 'boolean') {
         return {
           success: true,
           openToWork: result.data.open_to_work,
         };
       }
-      if (typeof result.open_to_work === "boolean") {
+      if (typeof result.open_to_work === 'boolean') {
         return {
           success: true,
           openToWork: result.open_to_work,
@@ -284,7 +286,7 @@ async function checkOpenToWorkOnce(
     }
 
     // Direct object response
-    if (data.data && typeof data.data.open_to_work === "boolean") {
+    if (data.data && typeof data.data.open_to_work === 'boolean') {
       return {
         success: true,
         openToWork: data.data.open_to_work,
@@ -518,7 +520,7 @@ const db = {
     console.log(`   - Get next ${limit} with LinkedIn + not yet scraped`);
     console.log(`   - Formula: score = stars × (user_prs / total_prs)`);
 
-    const users = await sql`
+    const users = (await sql`
       WITH sf_bay_area_users AS (
         SELECT
           username,
@@ -638,7 +640,7 @@ const db = {
         AND (otw_permanent_failure IS NULL OR otw_permanent_failure = FALSE)
       ORDER BY rank ASC
       LIMIT ${limit}
-    ` as unknown as LeaderboardUser[];
+    `) as unknown as LeaderboardUser[];
 
     return users;
   },
@@ -790,7 +792,9 @@ const logger = {
     console.log('═'.repeat(70));
     console.log('LinkedIn Open-to-Work Enrichment - San Francisco Bay Area');
     console.log('═'.repeat(70));
-    console.log(`Region:        San Francisco Bay Area (${SF_BAY_AREA_LOCATIONS.length} location patterns)`);
+    console.log(
+      `Region:        San Francisco Bay Area (${SF_BAY_AREA_LOCATIONS.length} location patterns)`
+    );
     console.log(`Skip count:    ${CONFIG.skipCount} (top ranked SF profiles to skip)`);
     console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles with LinkedIn to process)`);
     console.log(`Request delay: ${CONFIG.requestDelayMs}ms`);
@@ -811,11 +815,20 @@ const logger = {
     console.log(`   Already scraped (OTW):     ${scrapedStats.openToWork} ✨`);
     console.log(`   Already scraped (Not OTW): ${scrapedStats.notOpenToWork}`);
     console.log(`   Permanent failures:        ${scrapedStats.permanentFailures} (won't retry)`);
-    console.log(`   Total processed:           ${scrapedStats.openToWork + scrapedStats.notOpenToWork + scrapedStats.permanentFailures}`);
+    console.log(
+      `   Total processed:           ${scrapedStats.openToWork + scrapedStats.notOpenToWork + scrapedStats.permanentFailures}`
+    );
     console.log('');
   },
 
-  userProgress(rank: number, username: string, location: string | null, score: number, total: number, current: number): void {
+  userProgress(
+    rank: number,
+    username: string,
+    location: string | null,
+    score: number,
+    total: number,
+    current: number
+  ): void {
     console.log(`\n[${current}/${total}] SF Rank #${rank}: ${username}`);
     console.log(`   Location: ${location ?? 'N/A'}`);
     console.log(`   Score: ${score.toFixed(2)}`);
@@ -881,7 +894,8 @@ async function main(): Promise<void> {
 
   // Get already scraped count for stats
   const scrapedBefore = await db.getAlreadyScrapedCount();
-  const alreadyScrapedCount = scrapedBefore.openToWork + scrapedBefore.notOpenToWork + scrapedBefore.permanentFailures;
+  const alreadyScrapedCount =
+    scrapedBefore.openToWork + scrapedBefore.notOpenToWork + scrapedBefore.permanentFailures;
 
   // Fetch SF Bay Area users
   const users = await db.fetchRankedSFUsers(CONFIG.skipCount, CONFIG.fetchCount);
@@ -897,7 +911,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`\n✓ Found ${users.length} user(s) to process (${alreadyScrapedCount} already processed, skipped)\n`);
+  console.log(
+    `\n✓ Found ${users.length} user(s) to process (${alreadyScrapedCount} already processed, skipped)\n`
+  );
 
   // Process each user
   const stats = {

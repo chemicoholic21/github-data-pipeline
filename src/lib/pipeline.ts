@@ -1,7 +1,7 @@
-import { 
-  fetchGithubUser, 
-  fetchUserRepositories, 
-  fetchPullRequestsForRepo 
+import {
+  fetchGithubUser,
+  fetchUserRepositories,
+  fetchPullRequestsForRepo,
 } from './githubScraper.js';
 import {
   upsertGithubUser,
@@ -19,14 +19,11 @@ import {
   userRepoScores,
   userScores,
   leaderboardOld,
-  leaderboard,
   usersOld,
-  analysesOld
+  analysesOld,
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
-import { 
-  computeRepoScore 
-} from './scoring.js';
+import { computeRepoScore } from './scoring.js';
 
 /**
  * True when an error means "GitHub quota is exhausted right now" — i.e. the
@@ -70,14 +67,14 @@ export async function scrapeUser(username: string, forceRefresh = false): Promis
     }
     console.log(`[SCRAPE][REPOS] ✅ Repos processed.`);
 
-    const qualifyingRepos = repos.filter(r => r.stargazerCount >= 10);
+    const qualifyingRepos = repos.filter((r) => r.stargazerCount >= 10);
     console.log(`[SCRAPE][PRS] Scanning ${qualifyingRepos.length} repos for PRs...`);
 
     let totalPrsSaved = 0;
     for (const repo of qualifyingRepos) {
       try {
         const prs = await fetchPullRequestsForRepo(repo.ownerLogin, repo.name, forceRefresh);
-        const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
+        const userPrs = prs.filter((pr) => pr.authorLogin.toLowerCase() === username.toLowerCase());
 
         if (userPrs.length > 0) {
           await insertPullRequests(userPrs);
@@ -125,14 +122,13 @@ export async function computeUserRepoStats(username: string) {
     .from(githubPullRequests)
     .innerJoin(
       githubRepos,
-      eq(githubPullRequests.repoName, sql`${githubRepos.ownerLogin} || '/' || ${githubRepos.repoName}`)
+      eq(
+        githubPullRequests.repoName,
+        sql`${githubRepos.ownerLogin} || '/' || ${githubRepos.repoName}`
+      )
     )
     .where(eq(githubPullRequests.username, username))
-    .groupBy(
-      githubPullRequests.repoName, 
-      githubRepos.totalPrs, 
-      githubRepos.stars
-    );
+    .groupBy(githubPullRequests.repoName, githubRepos.totalPrs, githubRepos.stars);
 
   return stats;
 }
@@ -141,7 +137,7 @@ export async function updateUserRepoScores(username: string) {
   console.log(`\n[COMPUTE][START] User: ${username}`);
 
   const repoStats = await computeUserRepoStats(username);
-  
+
   if (repoStats.length === 0) {
     console.log(`[COMPUTE] No PR contributions found for ${username}`);
     return;
@@ -168,7 +164,7 @@ export async function updateUserRepoScores(username: string) {
       });
     }
   }
-  
+
   console.log(`[COMPUTE][COMPLETE] ✅ Processed ${repoStats.length} repos`);
 }
 
@@ -215,7 +211,11 @@ async function syncToLegacyTables(
   username: string,
   linkedin: string | null = null
 ): Promise<void> {
-  const userRows = await db.select().from(githubUsers).where(eq(githubUsers.username, username)).limit(1);
+  const userRows = await db
+    .select()
+    .from(githubUsers)
+    .where(eq(githubUsers.username, username))
+    .limit(1);
   const user = userRows[0];
   if (!user) {
     return;
@@ -301,7 +301,9 @@ async function syncToLegacyTables(
     });
     console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
   } catch (error: any) {
-    console.error(`[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${error.message}`);
+    console.error(
+      `[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${error.message}`
+    );
   }
 
   try {
@@ -328,7 +330,9 @@ async function syncToLegacyTables(
     });
     console.log(`[SYNC] ✅ Synced ${username} to leaderboard_old table`);
   } catch (error: any) {
-    console.error(`[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${error.message}`);
+    console.error(
+      `[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${error.message}`
+    );
   }
 }
 
@@ -336,11 +340,92 @@ async function syncToLegacyTables(
  * STAGE 4: ANALYZE SKILLS
  */
 const SKILL_CATEGORIES = {
-  ai: ['ai', 'ml', 'machine-learning', 'deep-learning', 'neural', 'tensorflow', 'pytorch', 'nlp', 'gpt', 'llm', 'langchain', 'huggingface', 'scikit-learn', 'keras'],
-  backend: ['backend', 'api', 'server', 'nodejs', 'node.js', 'python', 'java', 'go', 'rust', 'spring', 'express', 'django', 'fastapi', 'graphql', 'database', 'sql', 'mongodb', 'postgresql'],
-  frontend: ['frontend', 'react', 'vue', 'angular', 'svelte', 'typescript', 'javascript', 'css', 'html', 'nextjs', 'nuxt', 'tailwind', 'ui', 'ux', 'web'],
-  devops: ['devops', 'docker', 'kubernetes', 'k8s', 'terraform', 'aws', 'gcp', 'azure', 'ci-cd', 'github-actions', 'gitlab', 'jenkins', 'monitoring', 'logging', 'infrastructure'],
-  data: ['data', 'analytics', 'data-science', 'pandas', 'numpy', 'spark', 'hadoop', 'snowflake', 'dbt', 'tableau', 'powerbi', 'etl', 'warehouse', 'bigquery'],
+  ai: [
+    'ai',
+    'ml',
+    'machine-learning',
+    'deep-learning',
+    'neural',
+    'tensorflow',
+    'pytorch',
+    'nlp',
+    'gpt',
+    'llm',
+    'langchain',
+    'huggingface',
+    'scikit-learn',
+    'keras',
+  ],
+  backend: [
+    'backend',
+    'api',
+    'server',
+    'nodejs',
+    'node.js',
+    'python',
+    'java',
+    'go',
+    'rust',
+    'spring',
+    'express',
+    'django',
+    'fastapi',
+    'graphql',
+    'database',
+    'sql',
+    'mongodb',
+    'postgresql',
+  ],
+  frontend: [
+    'frontend',
+    'react',
+    'vue',
+    'angular',
+    'svelte',
+    'typescript',
+    'javascript',
+    'css',
+    'html',
+    'nextjs',
+    'nuxt',
+    'tailwind',
+    'ui',
+    'ux',
+    'web',
+  ],
+  devops: [
+    'devops',
+    'docker',
+    'kubernetes',
+    'k8s',
+    'terraform',
+    'aws',
+    'gcp',
+    'azure',
+    'ci-cd',
+    'github-actions',
+    'gitlab',
+    'jenkins',
+    'monitoring',
+    'logging',
+    'infrastructure',
+  ],
+  data: [
+    'data',
+    'analytics',
+    'data-science',
+    'pandas',
+    'numpy',
+    'spark',
+    'hadoop',
+    'snowflake',
+    'dbt',
+    'tableau',
+    'powerbi',
+    'etl',
+    'warehouse',
+    'bigquery',
+  ],
 };
 
 function categorizeRepo(repo: any): string[] {
@@ -350,7 +435,7 @@ function categorizeRepo(repo: any): string[] {
     .map((s: string) => s.toLowerCase());
 
   for (const [category, keywords] of Object.entries(SKILL_CATEGORIES)) {
-    if (allKeywords.some((kw: string) => keywords.some(k => kw.includes(k)))) {
+    if (allKeywords.some((kw: string) => keywords.some((k) => kw.includes(k)))) {
       categories.add(category);
     }
   }
@@ -407,10 +492,10 @@ export async function analyzeUserSkills(username: string) {
 
       // Base score from stars
       const starScore = Math.log(repo.stars + 1) * 10;
-      
+
       // PR contribution score
       const prScore = prCount * 5;
-      
+
       // Total repo score
       const repoScore = starScore + prScore;
 
@@ -449,14 +534,10 @@ export async function analyzeUserSkills(username: string) {
     }
 
     // Sort and get top 5 repos
-    const topReposList = topRepos
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+    const topReposList = topRepos.sort((a, b) => b.score - a.score).slice(0, 5);
 
     // Sort and get top skills
-    const topSkills = Array.from(skillsSet)
-      .sort()
-      .slice(0, 10);
+    const topSkills = Array.from(skillsSet).sort().slice(0, 10);
 
     const totalScore = Object.values(categoryScores).reduce((a, b) => a + b, 0);
 
@@ -483,7 +564,7 @@ export async function analyzeUserSkills(username: string) {
     });
 
     // Update leaderboard with skill scores using raw SQL
-    const skillsArray = `{${topSkills.map(s => `"${s}"`).join(',')}}`;
+    const skillsArray = `{${topSkills.map((s) => `"${s}"`).join(',')}}`;
     await db.execute(sql`
       UPDATE leaderboard SET
         total_score = ${totalScore},
@@ -499,8 +580,12 @@ export async function analyzeUserSkills(username: string) {
     console.log(`[ANALYZE] ✅ Updated leaderboard with skill scores`);
 
     console.log(`[ANALYZE][COMPLETE] ✅ Skills analyzed`);
-    console.log(`  - AI: ${(categoryScores.ai ?? 0).toFixed(2)}, Backend: ${(categoryScores.backend ?? 0).toFixed(2)}, Frontend: ${(categoryScores.frontend ?? 0).toFixed(2)}`);
-    console.log(`  - DevOps: ${(categoryScores.devops ?? 0).toFixed(2)}, Data: ${(categoryScores.data ?? 0).toFixed(2)}`);
+    console.log(
+      `  - AI: ${(categoryScores.ai ?? 0).toFixed(2)}, Backend: ${(categoryScores.backend ?? 0).toFixed(2)}, Frontend: ${(categoryScores.frontend ?? 0).toFixed(2)}`
+    );
+    console.log(
+      `  - DevOps: ${(categoryScores.devops ?? 0).toFixed(2)}, Data: ${(categoryScores.data ?? 0).toFixed(2)}`
+    );
     console.log(`  - Top Skills: ${topSkills.slice(0, 5).join(', ')}`);
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -552,7 +637,9 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
     syncOk = true;
     console.log(`[PIPELINE] Stage 3 ✅ Complete`);
   } catch (error: any) {
-    console.error(`[PIPELINE] ❌ Stage 3 (LEADERBOARD SYNC) failed for ${username}: ${error.message}`);
+    console.error(
+      `[PIPELINE] ❌ Stage 3 (LEADERBOARD SYNC) failed for ${username}: ${error.message}`
+    );
     if (error.stack) console.error(error.stack);
   }
 
@@ -576,7 +663,7 @@ export async function runPipeline(username: string, forceRefresh = false): Promi
   }
 
   console.log(
-    `[PIPELINE] ⚠️ Pipeline incomplete for ${username} (scrape=${scrapeOk}, leaderboardSync=${syncOk}) — not advancing scraped_at`,
+    `[PIPELINE] ⚠️ Pipeline incomplete for ${username} (scrape=${scrapeOk}, leaderboardSync=${syncOk}) — not advancing scraped_at`
   );
   return false;
 }

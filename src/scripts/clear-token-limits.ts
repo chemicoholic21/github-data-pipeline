@@ -1,6 +1,5 @@
 import { db } from '../db/dbClient.js';
 import { tokenRateLimit } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
 
 async function clearTokenLimits() {
   console.log('Clearing all token rate limits...');

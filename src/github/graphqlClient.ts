@@ -91,7 +91,9 @@ class GitHubGraphqlClient {
       this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       try {
-        console.log(`[GraphQL] Sending ${operationName || 'query'} request (token ${tokenIndex})...`);
+        console.log(
+          `[GraphQL] Sending ${operationName || 'query'} request (token ${tokenIndex})...`
+        );
         const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
           query,
           variables,
@@ -148,7 +150,9 @@ class GitHubGraphqlClient {
             messageText.includes('Resource not accessible by integration');
 
           if (isInvalidToken) {
-            console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`);
+            console.error(
+              `[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`
+            );
             await markTokenExhausted(tokenIndex, Math.floor(Date.now() / 1000) + 86400);
             continue; // try the next-best token immediately, no backoff
           }
@@ -159,7 +163,9 @@ class GitHubGraphqlClient {
               messageText.includes('secondary rate limit'))
           ) {
             const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
-            console.error(`[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`);
+            console.error(
+              `[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`
+            );
             await markTokenExhausted(tokenIndex, resetTime);
             continue; // another token may still have quota
           }

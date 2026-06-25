@@ -85,7 +85,7 @@ export const apiCacheOld = pgTable(
   'api_cache_old',
   {
     cacheKey: text('cache_key').primaryKey(), // SHA-256 hash of request
-    response: jsonb('response').notNull(),    // Raw API response
+    response: jsonb('response').notNull(), // Raw API response
     cachedAt: timestamp('cached_at').notNull().defaultNow(),
     expiresAt: timestamp('expires_at').notNull(),
   },
@@ -98,7 +98,7 @@ export const apiCacheOld = pgTable(
 export const tokenRateLimit = pgTable('token_rate_limit', {
   tokenIndex: integer('token_index').primaryKey(), // Index in GITHUB_TOKENS array
   remaining: integer('remaining').notNull().default(5000), // Remaining API calls
-  resetTime: integer('reset_time').notNull().default(0),   // Unix timestamp when limit resets
+  resetTime: integer('reset_time').notNull().default(0), // Unix timestamp when limit resets
   lastUpdated: timestamp('last_updated').notNull().defaultNow(),
 });
 
@@ -119,8 +119,8 @@ export const analysesOld = pgTable('analyses_old', {
   dataScore: real('data_score').notNull().default(0),
   uniqueSkillsJson: jsonb('unique_skills_json'), // Array of skill tags
   linkedin: text('linkedin'),
-  topReposJson: jsonb('top_repos_json'),         // Top contributing repos
-  languagesJson: jsonb('languages_json'),        // Language breakdown
+  topReposJson: jsonb('top_repos_json'), // Top contributing repos
+  languagesJson: jsonb('languages_json'), // Language breakdown
   contributionCount: integer('contribution_count').notNull().default(0),
   cachedAt: timestamp('cached_at').notNull().defaultNow(),
 });
@@ -172,38 +172,38 @@ export const githubUsers = pgTable('github_users', {
   twitterUsername: text('twitter_username'),
   company: text('company'),
   hireable: boolean('hireable'),
-  createdAt: timestamp('created_at'),  // GitHub account creation date
+  createdAt: timestamp('created_at'), // GitHub account creation date
   scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
 });
 
 // Repositories scraped from GitHub - one row per unique repo
 // PK is repo_name (not owner/repo) - use fullName for unique lookup
 export const githubRepos = pgTable('github_repos', {
-  repoName: text('repo_name').primaryKey(),        // e.g. "react"
-  ownerLogin: text('owner_login').notNull(),       // e.g. "facebook"
-  fullName: text('full_name'),                     // e.g. "facebook/react" - unique indexed
+  repoName: text('repo_name').primaryKey(), // e.g. "react"
+  ownerLogin: text('owner_login').notNull(), // e.g. "facebook"
+  fullName: text('full_name'), // e.g. "facebook/react" - unique indexed
   description: text('description'),
-  primaryLanguage: text('primary_language'),       // Main language (e.g. "TypeScript")
-  languages: text('languages').array(),            // All languages used
+  primaryLanguage: text('primary_language'), // Main language (e.g. "TypeScript")
+  languages: text('languages').array(), // All languages used
   stars: integer('stars').notNull().default(0),
   forks: integer('forks').notNull().default(0),
   watchers: integer('watchers').notNull().default(0),
   totalPrs: integer('total_prs').notNull().default(0), // Total merged PRs across all users
   isFork: boolean('is_fork').notNull().default(false),
   isArchived: boolean('is_archived').notNull().default(false),
-  topics: text('topics').array(),                  // GitHub topics/tags
+  topics: text('topics').array(), // GitHub topics/tags
   createdAt: timestamp('created_at'),
-  pushedAt: timestamp('pushed_at'),                // Last push date
+  pushedAt: timestamp('pushed_at'), // Last push date
   scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
 });
 
 // Pull requests - tracks which users contributed to which repos
 export const githubPullRequests = pgTable('github_pull_requests', {
-  id: text('id').primaryKey(),                     // GitHub PR node ID
-  username: text('username').notNull(),            // PR author
+  id: text('id').primaryKey(), // GitHub PR node ID
+  username: text('username').notNull(), // PR author
   repoName: text('repo_name').notNull(),
-  fullName: text('full_name'),                     // "owner/repo" format
-  state: text('state').notNull(),                  // OPEN, CLOSED, MERGED
+  fullName: text('full_name'), // "owner/repo" format
+  state: text('state').notNull(), // OPEN, CLOSED, MERGED
   additions: integer('additions'),
   deletions: integer('deletions'),
   mergedAt: timestamp('merged_at'),
@@ -218,7 +218,7 @@ export const githubPullRequests = pgTable('github_pull_requests', {
 export const repoHealth = pgTable(
   'repo_health',
   {
-    fullName: text('full_name').primaryKey(),        // "owner/repo"
+    fullName: text('full_name').primaryKey(), // "owner/repo"
     ownerLogin: text('owner_login').notNull(),
     repoName: text('repo_name').notNull(),
     primaryLanguage: text('primary_language'),
@@ -270,18 +270,22 @@ export const repoHealth = pgTable(
 );
 
 // Per-repo scores for each user: score = stars × (userPRs / totalPRs)
-export const userRepoScores = pgTable('user_repo_scores', {
-  id: serial('id').primaryKey(),
-  username: text('username').notNull(),
-  repoName: text('repo_name').notNull(),
-  userPrs: integer('user_prs').notNull().default(0),   // User's merged PRs
-  totalPrs: integer('total_prs').notNull().default(0), // Repo's total merged PRs
-  stars: integer('stars').notNull().default(0),
-  repoScore: real('repo_score').notNull().default(0),  // Computed score
-  computedAt: timestamp('computed_at').notNull().defaultNow(),
-}, (table) => ({
-  unq: unique('user_repo_scores_username_repo_name_key').on(table.username, table.repoName),
-}));
+export const userRepoScores = pgTable(
+  'user_repo_scores',
+  {
+    id: serial('id').primaryKey(),
+    username: text('username').notNull(),
+    repoName: text('repo_name').notNull(),
+    userPrs: integer('user_prs').notNull().default(0), // User's merged PRs
+    totalPrs: integer('total_prs').notNull().default(0), // Repo's total merged PRs
+    stars: integer('stars').notNull().default(0),
+    repoScore: real('repo_score').notNull().default(0), // Computed score
+    computedAt: timestamp('computed_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    unq: unique('user_repo_scores_username_repo_name_key').on(table.username, table.repoName),
+  })
+);
 
 // Aggregated total score per user (sum of all repo scores)
 export const userScores = pgTable('user_scores', {
@@ -297,30 +301,34 @@ export const userScores = pgTable('user_scores', {
 // Skill definitions - maps languages/topics/keywords to skill categories
 // 28 skills total (languages, frameworks, tools)
 export const skills = pgTable('skills', {
-  slug: text('slug').primaryKey(),                 // e.g. "typescript", "react"
-  displayName: text('display_name').notNull(),     // e.g. "TypeScript", "React"
-  category: text('category').notNull(),            // e.g. "language", "framework", "tool"
+  slug: text('slug').primaryKey(), // e.g. "typescript", "react"
+  displayName: text('display_name').notNull(), // e.g. "TypeScript", "React"
+  category: text('category').notNull(), // e.g. "language", "framework", "tool"
   matchLanguages: text('match_languages').array().notNull(), // GitHub languages that match
-  matchTopics: text('match_topics').array().notNull(),       // GitHub topics that match
-  matchKeywords: text('match_keywords').array().notNull(),   // Keywords to match
+  matchTopics: text('match_topics').array().notNull(), // GitHub topics that match
+  matchKeywords: text('match_keywords').array().notNull(), // Keywords to match
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // Per-user skill scores - computed from repos/PRs matching each skill
-export const userSkillScores = pgTable('user_skill_scores', {
-  username: text('username').notNull(),
-  skillSlug: text('skill_slug').notNull(),         // FK to skills.slug
-  score: real('score').notNull(),                  // Computed skill score
-  repoCount: integer('repo_count').notNull(),      // Number of repos with this skill
-  topReposJson: jsonb('top_repos_json'),           // Top repos for this skill
-  computedAt: timestamp('computed_at').notNull().defaultNow(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.username, table.skillSlug] }),
-  idxSkill: index('idx_uss_skill').on(table.skillSlug),
-  idxScore: index('idx_uss_score').on(table.score),
-  idxUsername: index('idx_uss_username').on(table.username),
-  idxSkillScore: index('idx_uss_skill_score').on(table.skillSlug, table.score),
-}));
+export const userSkillScores = pgTable(
+  'user_skill_scores',
+  {
+    username: text('username').notNull(),
+    skillSlug: text('skill_slug').notNull(), // FK to skills.slug
+    score: real('score').notNull(), // Computed skill score
+    repoCount: integer('repo_count').notNull(), // Number of repos with this skill
+    topReposJson: jsonb('top_repos_json'), // Top repos for this skill
+    computedAt: timestamp('computed_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.username, table.skillSlug] }),
+    idxSkill: index('idx_uss_skill').on(table.skillSlug),
+    idxScore: index('idx_uss_score').on(table.score),
+    idxUsername: index('idx_uss_username').on(table.username),
+    idxSkillScore: index('idx_uss_skill_score').on(table.skillSlug, table.score),
+  })
+);
 
 // =============================================================================
 // CONSOLIDATED TABLES - primary leaderboard + parsed API cache
@@ -365,10 +373,10 @@ export const leaderboard = pgTable('leaderboard', {
 // cache_key format: "github:graphql:<username>" → type=github, subtype=graphql, ref=username
 export const apiCache = pgTable('api_cache', {
   id: serial('id').primaryKey(),
-  cacheType: text('cache_type').notNull(),         // e.g. "github"
-  cacheSubtype: text('cache_subtype').notNull(),   // e.g. "graphql", "rest"
-  cacheRef: text('cache_ref').notNull(),           // e.g. username or repo name
-  cacheKey: text('cache_key').notNull(),           // Original full key (unique)
+  cacheType: text('cache_type').notNull(), // e.g. "github"
+  cacheSubtype: text('cache_subtype').notNull(), // e.g. "graphql", "rest"
+  cacheRef: text('cache_ref').notNull(), // e.g. username or repo name
+  cacheKey: text('cache_key').notNull(), // Original full key (unique)
   response: jsonb('response').notNull(),
   cachedAt: timestamp('cached_at'),
   expiresAt: timestamp('expires_at'),
@@ -382,8 +390,8 @@ export const apiCache = pgTable('api_cache', {
 // Canonical ordering: user_a < user_b alphabetically (enforced by CHECK constraint)
 export const conversations = pgTable('conversations', {
   id: serial('id').primaryKey(),
-  userA: text('user_a').notNull(),                 // FK to github_users
-  userB: text('user_b').notNull(),                 // FK to github_users
+  userA: text('user_a').notNull(), // FK to github_users
+  userB: text('user_b').notNull(), // FK to github_users
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(), // Updated on new message
 });
@@ -392,9 +400,9 @@ export const conversations = pgTable('conversations', {
 export const messages = pgTable('messages', {
   id: serial('id').primaryKey(),
   conversationId: integer('conversation_id').notNull(), // FK to conversations
-  senderUsername: text('sender_username').notNull(),    // FK to github_users
-  content: text('content').notNull(),                   // 1-10,000 chars
+  senderUsername: text('sender_username').notNull(), // FK to github_users
+  content: text('content').notNull(), // 1-10,000 chars
   sentAt: timestamp('sent_at').notNull().defaultNow(),
-  readAt: timestamp('read_at'),                         // NULL = unread
-  deletedAt: timestamp('deleted_at'),                   // Soft delete (NULL = active)
+  readAt: timestamp('read_at'), // NULL = unread
+  deletedAt: timestamp('deleted_at'), // Soft delete (NULL = active)
 });

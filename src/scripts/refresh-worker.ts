@@ -95,7 +95,7 @@ async function sleepUntilNextReset(): Promise<void> {
   const targetMs = resetUnix > 0 ? resetUnix * 1000 - Date.now() + 5_000 : MIN_SLEEP_MS;
   const waitMs = Math.min(MAX_SLEEP_MS, Math.max(MIN_SLEEP_MS, targetMs));
   console.log(
-    `[worker] all tokens exhausted — sleeping ${Math.round(waitMs / 1000)}s until next reset`,
+    `[worker] all tokens exhausted — sleeping ${Math.round(waitMs / 1000)}s until next reset`
   );
   await sleep(waitMs);
 }
@@ -103,7 +103,7 @@ async function sleepUntilNextReset(): Promise<void> {
 async function main() {
   installShutdown();
   console.log(
-    `[worker] starting (refresh_after=${REFRESH_AFTER_DAYS}d, batch=${BATCH_SIZE}, delay=${PER_USER_DELAY_MS}ms)`,
+    `[worker] starting (refresh_after=${REFRESH_AFTER_DAYS}d, batch=${BATCH_SIZE}, delay=${PER_USER_DELAY_MS}ms)`
   );
 
   let totalProcessed = 0;
@@ -138,7 +138,11 @@ async function main() {
     } catch (e) {
       const err = e as Error & { cause?: unknown };
       const cause = err.cause instanceof Error ? err.cause.message : String(err.cause ?? '');
-      console.error('[worker] stale-batch query failed:', err.message, cause ? `(cause: ${cause})` : '');
+      console.error(
+        '[worker] stale-batch query failed:',
+        err.message,
+        cause ? `(cause: ${cause})` : ''
+      );
       await sleep(IDLE_SLEEP_MS);
       continue;
     }
@@ -146,7 +150,7 @@ async function main() {
     if (batch.length === 0) {
       const upH = ((Date.now() - startedAt) / 3_600_000).toFixed(1);
       console.log(
-        `[worker] caught up (no stale users). processed=${totalProcessed} uptime=${upH}h — idling ${Math.round(IDLE_SLEEP_MS / 1000)}s`,
+        `[worker] caught up (no stale users). processed=${totalProcessed} uptime=${upH}h — idling ${Math.round(IDLE_SLEEP_MS / 1000)}s`
       );
       await sleep(IDLE_SLEEP_MS);
       continue;
@@ -182,9 +186,7 @@ async function main() {
           success = await runPipeline(username, true);
           if (success) break;
 
-          console.log(
-            `[worker] ${username} failed (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`
-          );
+          console.log(`[worker] ${username} failed (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`);
         } catch (e) {
           console.error(
             `[worker] ${username} threw (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}):`,
@@ -211,7 +213,7 @@ async function main() {
 
     if (totalProcessed % 100 < BATCH_SIZE) {
       console.log(
-        `[worker] progress: processed=${totalProcessed}, rate-limit-waits=${totalSkippedRateLimit}`,
+        `[worker] progress: processed=${totalProcessed}, rate-limit-waits=${totalSkippedRateLimit}`
       );
     }
   }

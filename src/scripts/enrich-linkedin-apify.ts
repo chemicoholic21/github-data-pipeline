@@ -32,17 +32,21 @@ config({ path: '.env' });
 // Configuration
 const CONFIG = {
   // Database
-  databaseUrl: process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL not set'); })(),
+  databaseUrl:
+    process.env.DATABASE_URL ??
+    (() => {
+      throw new Error('DATABASE_URL not set');
+    })(),
 
   // Apify API
   apifyApiToken: process.env.APIFY_API_TOKEN ?? '',
 
   // Scraping settings
-  skipCount: 264,        // Skip top N profiles
-  fetchCount: 995,       // Fetch next N profiles with LinkedIn
-  requestDelayMs: 4000,  // Delay between requests to avoid rate limiting
-  maxRetries: 2,         // Number of retries for failed requests
-  initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
+  skipCount: 264, // Skip top N profiles
+  fetchCount: 995, // Fetch next N profiles with LinkedIn
+  requestDelayMs: 4000, // Delay between requests to avoid rate limiting
+  maxRetries: 2, // Number of retries for failed requests
+  initialRetryDelayMs: 5000, // Initial delay before first retry (doubles each retry)
 };
 
 // Initialize database connection
@@ -67,7 +71,7 @@ export interface OpenToWorkResult {
 // Apify API Client
 // ============================================================================
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Check if a LinkedIn profile is "Open to Work" using Apify API (single attempt)
@@ -80,9 +84,9 @@ async function checkOpenToWorkOnce(
 
   try {
     const response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         linkedin_url: linkedinUrl,
@@ -114,13 +118,13 @@ async function checkOpenToWorkOnce(
       }
 
       // Handle different response formats
-      if (result.data && typeof result.data.open_to_work === "boolean") {
+      if (result.data && typeof result.data.open_to_work === 'boolean') {
         return {
           success: true,
           openToWork: result.data.open_to_work,
         };
       }
-      if (typeof result.open_to_work === "boolean") {
+      if (typeof result.open_to_work === 'boolean') {
         return {
           success: true,
           openToWork: result.open_to_work,
@@ -129,7 +133,7 @@ async function checkOpenToWorkOnce(
     }
 
     // Direct object response
-    if (data.data && typeof data.data.open_to_work === "boolean") {
+    if (data.data && typeof data.data.open_to_work === 'boolean') {
       return {
         success: true,
         openToWork: data.data.open_to_work,
@@ -175,10 +179,11 @@ export async function checkOpenToWork(
     }
 
     // If it's a timeout or transient error, retry
-    const isRetryable = lastResult.error?.includes('timeout') ||
-                        lastResult.error?.includes('timed out') ||
-                        lastResult.error?.includes('ETIMEDOUT') ||
-                        lastResult.error?.includes('ECONNRESET');
+    const isRetryable =
+      lastResult.error?.includes('timeout') ||
+      lastResult.error?.includes('timed out') ||
+      lastResult.error?.includes('ETIMEDOUT') ||
+      lastResult.error?.includes('ECONNRESET');
 
     if (!isRetryable) {
       // Non-retryable error, return immediately
@@ -231,7 +236,7 @@ const db = {
     console.log(`📊 Fetching first ${limit} users with LinkedIn after rank ${offset}...`);
     console.log(`   Formula: score = stars × (user_prs / total_prs)`);
 
-    const users = await sql`
+    const users = (await sql`
       WITH ranked_users AS (
         SELECT
           username,
@@ -248,7 +253,7 @@ const db = {
         AND linkedin != ''
       ORDER BY rank ASC
       LIMIT ${limit}
-    ` as unknown as LeaderboardUser[];
+    `) as unknown as LeaderboardUser[];
 
     return users;
   },
@@ -278,7 +283,9 @@ const logger = {
     console.log('═'.repeat(60));
     console.log(`Skip count:    ${CONFIG.skipCount} (top ranked profiles to skip)`);
     console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles with LinkedIn to process)`);
-    console.log(`Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`);
+    console.log(
+      `Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`
+    );
     console.log(`Request delay: ${CONFIG.requestDelayMs}ms`);
     console.log(`Max retries:   ${CONFIG.maxRetries} (with exponential backoff)`);
     console.log('═'.repeat(60) + '\n');
@@ -293,7 +300,13 @@ const logger = {
     }
   },
 
-  userProgress(rank: number, username: string, score: number, total: number, current: number): void {
+  userProgress(
+    rank: number,
+    username: string,
+    score: number,
+    total: number,
+    current: number
+  ): void {
     console.log(`\n[${current}/${total}] Rank #${rank}: ${username}`);
     console.log(`   Score: ${score.toFixed(2)}`);
   },
@@ -314,7 +327,13 @@ const logger = {
     }
   },
 
-  summary(stats: { total: number; success: number; failed: number; openToWork: number; skipped: number }): void {
+  summary(stats: {
+    total: number;
+    success: number;
+    failed: number;
+    openToWork: number;
+    skipped: number;
+  }): void {
     console.log('\n' + '═'.repeat(60));
     console.log('ENRICHMENT SUMMARY');
     console.log('═'.repeat(60));
@@ -366,7 +385,7 @@ async function main(): Promise<void> {
     stats.total++;
 
     logger.userProgress(
-      user.rank,  // Actual rank from query
+      user.rank, // Actual rank from query
       user.username,
       user.total_score,
       users.length,

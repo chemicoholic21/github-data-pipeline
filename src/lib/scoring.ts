@@ -314,11 +314,7 @@ function logNorm(count: number, cap: number): number {
 }
 
 /** Exponential recency decay from a date → 0..1 (1 = just now). */
-function recencyDecay(
-  iso: string | null,
-  halfLifeDays: number,
-  nowMs: number
-): number | null {
+function recencyDecay(iso: string | null, halfLifeDays: number, nowMs: number): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return null;
@@ -361,13 +357,9 @@ export function computeContributionScore(
   // --- Pillar 2: Throughput (merge speed + velocity) × backlog penalty ------
   let throughput: number | null = null;
   const mergeTimeScore =
-    m.medianMergeHours != null
-      ? inverseTime(m.medianMergeHours, cfg.TARGET_MERGE_HOURS)
-      : null;
+    m.medianMergeHours != null ? inverseTime(m.medianMergeHours, cfg.TARGET_MERGE_HOURS) : null;
   const velocityScore =
-    m.mergeVelocityPerMonth != null
-      ? logNorm(m.mergeVelocityPerMonth, cfg.VELOCITY_CAP)
-      : null;
+    m.mergeVelocityPerMonth != null ? logNorm(m.mergeVelocityPerMonth, cfg.VELOCITY_CAP) : null;
   if (mergeTimeScore != null || velocityScore != null) {
     const parts: number[] = [];
     if (mergeTimeScore != null) parts.push(0.6 * mergeTimeScore);

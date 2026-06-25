@@ -30,7 +30,9 @@ const env = envSchema.parse(process.env);
 const githubTokenCandidates: string[] = [];
 if (env.GITHUB_TOKENS) {
   githubTokenCandidates.push(
-    ...env.GITHUB_TOKENS.split(',').map((value) => value.trim()).filter(Boolean)
+    ...env.GITHUB_TOKENS.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
   );
 }
 for (let i = 1; i <= 5; i++) {
@@ -91,7 +93,5 @@ if (config.nodeEnv === 'development') {
   console.log(`NODE_ENV: ${config.nodeEnv}`);
   console.log(`DATABASE_URL: ${config.databaseUrl}`);
   console.log(`GITHUB_TOKENS count: ${config.githubTokens.length}`);
-  console.log(
-    `GITHUB_TOKEN_INDICES: ${tokenIndices ? `[${tokenIndices.join(',')}]` : 'all'}`
-  );
+  console.log(`GITHUB_TOKEN_INDICES: ${tokenIndices ? `[${tokenIndices.join(',')}]` : 'all'}`);
 }

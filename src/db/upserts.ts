@@ -1,7 +1,13 @@
 import { db } from './dbClient.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
 import type { RepoHealthMetrics, ContributionScore } from '../types/repoHealth.js';
-import { githubUsers, githubRepos, githubPullRequests, userRepoScores, repoHealth } from './schema.js';
+import {
+  githubUsers,
+  githubRepos,
+  githubPullRequests,
+  userRepoScores,
+  repoHealth,
+} from './schema.js';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -43,13 +49,10 @@ export async function upsertGithubUser(user: User) {
     createdAt: user.createdAt ? new Date(user.createdAt) : null,
   };
 
-  return await db
-    .insert(githubUsers)
-    .values(insertValues)
-    .onConflictDoUpdate({
-      target: githubUsers.username,
-      set: updateValues,
-    });
+  return await db.insert(githubUsers).values(insertValues).onConflictDoUpdate({
+    target: githubUsers.username,
+    set: updateValues,
+  });
 }
 
 /**
@@ -76,13 +79,10 @@ export async function upsertGithubRepo(repo: Repository) {
     scrapedAt: new Date(),
   };
 
-  return await db
-    .insert(githubRepos)
-    .values(values)
-    .onConflictDoUpdate({
-      target: githubRepos.repoName, // PK is repo_name, not id
-      set: values,
-    });
+  return await db.insert(githubRepos).values(values).onConflictDoUpdate({
+    target: githubRepos.repoName, // PK is repo_name, not id
+    set: values,
+  });
 }
 
 /**
@@ -181,4 +181,3 @@ export async function markGithubUserScraped(username: string) {
     WHERE username = ${username}
   `);
 }
-

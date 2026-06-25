@@ -1,6 +1,6 @@
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
-import { apiCacheOld, apiCache } from '../db/schema.js';
+import { apiCacheOld } from '../db/schema.js';
 
 const DEFAULT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
