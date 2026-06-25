@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import crypto from 'crypto';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from './tokenPool.js';
 import { getCachedApiResponse, setCachedApiResponse } from '../lib/apiCache.js';
+import { getErrorMessage } from '../utils/async.js';
 
 const GITHUB_GRAPHQL_ENDPOINT = 'https://api.github.com/graphql';
 
@@ -91,7 +92,9 @@ class GitHubGraphqlClient {
       this.axiosClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       try {
-        console.log(`[GraphQL] Sending ${operationName || 'query'} request (token ${tokenIndex})...`);
+        console.log(
+          `[GraphQL] Sending ${operationName || 'query'} request (token ${tokenIndex})...`
+        );
         const response: AxiosResponse<GraphQLResponse<T>> = await this.axiosClient.post('', {
           query,
           variables,
@@ -121,8 +124,8 @@ class GitHubGraphqlClient {
             console.log(`[CACHE] Writing to api_cache: ${cacheKey.substring(0, 50)}...`);
             await setCachedApiResponse(cacheKey, result, cacheTTL);
             console.log(`[CACHE] ✅ Successfully cached`);
-          } catch (cacheError: any) {
-            console.error(`[CACHE] ❌ Failed to write cache: ${cacheError.message}`);
+          } catch (cacheError) {
+            console.error(`[CACHE] ❌ Failed to write cache: ${getErrorMessage(cacheError)}`);
             // Don't crash the pipeline, just log the error
           }
         }
@@ -137,7 +140,7 @@ class GitHubGraphqlClient {
 
           const message =
             typeof error.response.data === 'object' && error.response.data !== null
-              ? (error.response.data as any).message
+              ? (error.response.data as { message?: unknown }).message
               : undefined;
           const messageText = typeof message === 'string' ? message : '';
 
@@ -148,7 +151,9 @@ class GitHubGraphqlClient {
             messageText.includes('Resource not accessible by integration');
 
           if (isInvalidToken) {
-            console.error(`[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`);
+            console.error(
+              `[GraphQL] Token ${tokenIndex} unauthorized — marking exhausted, rotating to next PAT`
+            );
             await markTokenExhausted(tokenIndex, Math.floor(Date.now() / 1000) + 86400);
             continue; // try the next-best token immediately, no backoff
           }
@@ -159,7 +164,9 @@ class GitHubGraphqlClient {
               messageText.includes('secondary rate limit'))
           ) {
             const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0', 10);
-            console.error(`[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`);
+            console.error(
+              `[GraphQL] Token ${tokenIndex} rate-limited — marking exhausted, rotating to next PAT`
+            );
             await markTokenExhausted(tokenIndex, resetTime);
             continue; // another token may still have quota
           }

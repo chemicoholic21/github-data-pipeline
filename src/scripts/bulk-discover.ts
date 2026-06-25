@@ -1,18 +1,21 @@
 import { db } from '../db/dbClient.js';
-import { analysesOld, leaderboardOld, githubUsers } from '../db/schema.js';
-import { eq, sql } from 'drizzle-orm';
+import { githubUsers } from '../db/schema.js';
+import { sql } from 'drizzle-orm';
 import { Octokit } from '@octokit/rest';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from '../github/tokenPool.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getCachedUser } from '../lib/cache.js';
+import { sleep } from '../utils/async.js';
+
+/** GitHub/Octokit-style error carrying an HTTP status and response headers. */
+type HttpError = Error & {
+  status?: number;
+  headers?: Record<string, string | undefined>;
+};
 
 const CONCURRENCY = 1;
 const WAIT_TIME_MS = 5 * 60 * 1000; // 5 minutes for "all tokens exhausted" case
 const BATCH_DELAY_MS = 1500; // 1.5 seconds between batches
-
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function bulkDiscover(location: string, startRangeIndex: number = 0, startPage: number = 1) {
   console.log(`Starting High-Efficiency Pipeline for: ${location}`);
@@ -101,7 +104,8 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
                     const label = cached ? '[CACHED]' : '[ADDED]';
                     console.log(`      ${label} ${username} -> Refactored Pipeline Run Complete`);
                   } catch (userError: unknown) {
-                    const errorMsg = userError instanceof Error ? userError.message : String(userError);
+                    const errorMsg =
+                      userError instanceof Error ? userError.message : String(userError);
                     console.error(`      ❌ Error processing ${username}: ${errorMsg}`);
                     throw userError;
                   }
@@ -110,8 +114,12 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
               batchSuccess = true;
               await sleep(BATCH_DELAY_MS);
             } catch (batchError: unknown) {
-              const batchErrorObj = batchError instanceof Error ? batchError : new Error(String(batchError));
-              if ((batchErrorObj as any).message === 'rate-limited-all-tokens' || (batchErrorObj as any).status === 403) {
+              const batchErrorObj: HttpError =
+                batchError instanceof Error ? batchError : new Error(String(batchError));
+              if (
+                batchErrorObj.message === 'rate-limited-all-tokens' ||
+                batchErrorObj.status === 403
+              ) {
                 console.log(`      🕒 Rate limit hit. Rotating token immediately...`);
                 // If it was a 403, getBestToken will naturally pick a new one next time
                 // if fetchUserAnalysis already marked it as exhausted.
@@ -121,8 +129,8 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
                 console.error(
                   `      ⚠️ Batch error for ${todo.join(',')}: ${batchErrorObj.message}`
                 );
-                if ((batchErrorObj as any).stack) {
-                  console.error((batchErrorObj as any).stack);
+                if (batchErrorObj.stack) {
+                  console.error(batchErrorObj.stack);
                 }
                 batchSuccess = true;
               }
@@ -137,18 +145,18 @@ async function bulkDiscover(location: string, startRangeIndex: number = 0, start
         if (usernames.length < 100) hasMore = false;
         page++;
       } catch (e: unknown) {
-        const errorObj = e instanceof Error ? e : new Error(String(e));
-        if ((errorObj as any).status === 403) {
-          const retryAfter = parseInt((errorObj as any).headers?.['retry-after'] || '0', 10);
-          const resetTime = parseInt((errorObj as any).headers?.['x-ratelimit-reset'] || '0', 10);
-          console.log(`  🚫 Token ${(tokenInfo as any)?.index} Rate Limited. Retry-After: ${retryAfter}s`);
-          await markTokenExhausted((tokenInfo as any)?.index || 0, resetTime);
+        const errorObj: HttpError = e instanceof Error ? e : new Error(String(e));
+        if (errorObj.status === 403) {
+          const retryAfter = parseInt(errorObj.headers?.['retry-after'] || '0', 10);
+          const resetTime = parseInt(errorObj.headers?.['x-ratelimit-reset'] || '0', 10);
+          console.log(`  🚫 Token ${tokenInfo?.index} Rate Limited. Retry-After: ${retryAfter}s`);
+          await markTokenExhausted(tokenInfo?.index || 0, resetTime);
           // Don't increment page, just retry with a new token
           continue;
         } else {
           console.error(`  Range Error:`, errorObj.message);
-          if ((errorObj as any).stack) {
-            console.error((errorObj as any).stack);
+          if (errorObj.stack) {
+            console.error(errorObj.stack);
           }
           hasMore = false;
         }
@@ -163,7 +171,10 @@ const startIdx = parseInt(process.argv[3] ?? '0', 10);
 const startPage = parseInt(process.argv[4] ?? '1', 10);
 
 // Split locations by comma and trim whitespace
-const locations = locationArg.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0);
+const locations = locationArg
+  .split(',')
+  .map((loc) => loc.trim())
+  .filter((loc) => loc.length > 0);
 
 console.log(`\n🌍 Processing ${locations.length} location(s): ${locations.join(', ')}\n`);
 
@@ -175,7 +186,7 @@ console.log(`\n🌍 Processing ${locations.length} location(s): ${locations.join
     console.log(`\n${'='.repeat(60)}`);
     console.log(`📍 Location ${i + 1}/${locations.length}: ${location}`);
     console.log(`${'='.repeat(60)}\n`);
-    
+
     await bulkDiscover(location, startIdx, startPage);
   }
   console.log(`\n✅ All ${locations.length} location(s) processed!`);

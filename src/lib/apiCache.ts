@@ -1,6 +1,7 @@
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
-import { apiCacheOld, apiCache } from '../db/schema.js';
+import { apiCacheOld } from '../db/schema.js';
+import { getErrorMessage } from '../utils/async.js';
 
 const DEFAULT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -30,11 +31,12 @@ export async function getCachedApiResponse(cacheKey: string): Promise<unknown | 
     .where(and(eq(apiCacheOld.cacheKey, cacheKey), gt(apiCacheOld.expiresAt, new Date())))
     .limit(1);
 
-  if (rows.length === 0) {
+  const row = rows[0];
+  if (!row) {
     return null;
   }
 
-  return rows[0]!.response;
+  return row.response;
 }
 
 export async function setCachedApiResponse(
@@ -82,8 +84,8 @@ export async function setCachedApiResponse(
         cached_at = EXCLUDED.cached_at,
         expires_at = EXCLUDED.expires_at
     `);
-  } catch (error: any) {
-    console.error(`[CACHE_WRITE] Error caching ${cacheKey}: ${error.message}`);
+  } catch (error) {
+    console.error(`[CACHE_WRITE] Error caching ${cacheKey}: ${getErrorMessage(error)}`);
     throw error;
   }
 }

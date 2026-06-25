@@ -24,6 +24,8 @@
 
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
+import { checkOpenToWork, type OpenToWorkResult } from '../lib/linkedinOpenToWork.js';
+import { sleep, getErrorMessage } from '../utils/async.js';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -32,17 +34,21 @@ config({ path: '.env' });
 // Configuration
 const CONFIG = {
   // Database
-  databaseUrl: process.env.DATABASE_URL ?? (() => { throw new Error('DATABASE_URL not set'); })(),
+  databaseUrl:
+    process.env.DATABASE_URL ??
+    (() => {
+      throw new Error('DATABASE_URL not set');
+    })(),
 
   // Apify API
   apifyApiToken: process.env.APIFY_API_TOKEN ?? '',
 
   // Scraping settings
-  skipCount: 264,        // Skip top N profiles
-  fetchCount: 995,       // Fetch next N profiles with LinkedIn
-  requestDelayMs: 4000,  // Delay between requests to avoid rate limiting
-  maxRetries: 2,         // Number of retries for failed requests
-  initialRetryDelayMs: 5000,  // Initial delay before first retry (doubles each retry)
+  skipCount: 264, // Skip top N profiles
+  fetchCount: 995, // Fetch next N profiles with LinkedIn
+  requestDelayMs: 4000, // Delay between requests to avoid rate limiting
+  maxRetries: 2, // Number of retries for failed requests
+  initialRetryDelayMs: 5000, // Initial delay before first retry (doubles each retry)
 };
 
 // Initialize database connection
@@ -55,144 +61,6 @@ interface LeaderboardUser {
   linkedin: string | null;
   total_score: number;
   rank: number;
-}
-
-export interface OpenToWorkResult {
-  success: boolean;
-  openToWork: boolean | null;
-  error?: string;
-}
-
-// ============================================================================
-// Apify API Client
-// ============================================================================
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Check if a LinkedIn profile is "Open to Work" using Apify API (single attempt)
- */
-async function checkOpenToWorkOnce(
-  linkedinUrl: string,
-  apiToken: string
-): Promise<OpenToWorkResult> {
-  const endpoint = `https://api.apify.com/v2/acts/bestscrapers~linkedin-open-to-work-status/run-sync-get-dataset-items?token=${apiToken}`;
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        linkedin_url: linkedinUrl,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        openToWork: null,
-        error: `HTTP ${response.status}: ${errorText}`,
-      };
-    }
-
-    const data = await response.json();
-
-    // Apify returns an array of results
-    if (Array.isArray(data) && data.length > 0) {
-      const result = data[0];
-
-      // Check for timeout error in response
-      if (result.messages && result.messages.includes('timed out')) {
-        return {
-          success: false,
-          openToWork: null,
-          error: 'API timeout',
-        };
-      }
-
-      // Handle different response formats
-      if (result.data && typeof result.data.open_to_work === "boolean") {
-        return {
-          success: true,
-          openToWork: result.data.open_to_work,
-        };
-      }
-      if (typeof result.open_to_work === "boolean") {
-        return {
-          success: true,
-          openToWork: result.open_to_work,
-        };
-      }
-    }
-
-    // Direct object response
-    if (data.data && typeof data.data.open_to_work === "boolean") {
-      return {
-        success: true,
-        openToWork: data.data.open_to_work,
-      };
-    }
-
-    return {
-      success: false,
-      openToWork: null,
-      error: `Unexpected response format: ${JSON.stringify(data)}`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      openToWork: null,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Check if a LinkedIn profile is "Open to Work" using Apify API
- * With retry logic and exponential backoff
- */
-export async function checkOpenToWork(
-  linkedinUrl: string,
-  apiToken: string
-): Promise<OpenToWorkResult> {
-  let lastResult: OpenToWorkResult = { success: false, openToWork: null, error: 'Unknown error' };
-
-  for (let attempt = 0; attempt <= CONFIG.maxRetries; attempt++) {
-    if (attempt > 0) {
-      const delayMs = CONFIG.initialRetryDelayMs * Math.pow(2, attempt - 1);
-      console.log(`   🔄 Retry ${attempt}/${CONFIG.maxRetries} after ${delayMs / 1000}s delay...`);
-      await sleep(delayMs);
-    }
-
-    lastResult = await checkOpenToWorkOnce(linkedinUrl, apiToken);
-
-    // If successful, return immediately
-    if (lastResult.success) {
-      return lastResult;
-    }
-
-    // If it's a timeout or transient error, retry
-    const isRetryable = lastResult.error?.includes('timeout') ||
-                        lastResult.error?.includes('timed out') ||
-                        lastResult.error?.includes('ETIMEDOUT') ||
-                        lastResult.error?.includes('ECONNRESET');
-
-    if (!isRetryable) {
-      // Non-retryable error, return immediately
-      return lastResult;
-    }
-
-    // Log retry attempt
-    if (attempt < CONFIG.maxRetries) {
-      console.log(`   ⚠ ${lastResult.error} - will retry...`);
-    }
-  }
-
-  // All retries exhausted
-  return lastResult;
 }
 
 // ============================================================================
@@ -209,8 +77,8 @@ const db = {
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS is_open_to_work BOOLEAN`;
       await sql`ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS otw_scraped_at TIMESTAMP`;
       console.log('   ✓ Database columns ready\n');
-    } catch (error: any) {
-      console.log(`   ⚠ Column note: ${error.message}\n`);
+    } catch (error) {
+      console.log(`   ⚠ Column note: ${getErrorMessage(error)}\n`);
     }
   },
 
@@ -231,7 +99,7 @@ const db = {
     console.log(`📊 Fetching first ${limit} users with LinkedIn after rank ${offset}...`);
     console.log(`   Formula: score = stars × (user_prs / total_prs)`);
 
-    const users = await sql`
+    const users = (await sql`
       WITH ranked_users AS (
         SELECT
           username,
@@ -248,7 +116,7 @@ const db = {
         AND linkedin != ''
       ORDER BY rank ASC
       LIMIT ${limit}
-    ` as unknown as LeaderboardUser[];
+    `) as unknown as LeaderboardUser[];
 
     return users;
   },
@@ -278,7 +146,9 @@ const logger = {
     console.log('═'.repeat(60));
     console.log(`Skip count:    ${CONFIG.skipCount} (top ranked profiles to skip)`);
     console.log(`Fetch count:   ${CONFIG.fetchCount} (profiles with LinkedIn to process)`);
-    console.log(`Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`);
+    console.log(
+      `Target:        First ${CONFIG.fetchCount} users WITH LinkedIn after rank ${CONFIG.skipCount}`
+    );
     console.log(`Request delay: ${CONFIG.requestDelayMs}ms`);
     console.log(`Max retries:   ${CONFIG.maxRetries} (with exponential backoff)`);
     console.log('═'.repeat(60) + '\n');
@@ -293,7 +163,13 @@ const logger = {
     }
   },
 
-  userProgress(rank: number, username: string, score: number, total: number, current: number): void {
+  userProgress(
+    rank: number,
+    username: string,
+    score: number,
+    total: number,
+    current: number
+  ): void {
     console.log(`\n[${current}/${total}] Rank #${rank}: ${username}`);
     console.log(`   Score: ${score.toFixed(2)}`);
   },
@@ -314,7 +190,13 @@ const logger = {
     }
   },
 
-  summary(stats: { total: number; success: number; failed: number; openToWork: number; skipped: number }): void {
+  summary(stats: {
+    total: number;
+    success: number;
+    failed: number;
+    openToWork: number;
+    skipped: number;
+  }): void {
     console.log('\n' + '═'.repeat(60));
     console.log('ENRICHMENT SUMMARY');
     console.log('═'.repeat(60));
@@ -362,10 +244,11 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < users.length; i++) {
     const user = users[i];
+    if (!user) continue;
     stats.total++;
 
     logger.userProgress(
-      user.rank,  // Actual rank from query
+      user.rank, // Actual rank from query
       user.username,
       user.total_score,
       users.length,
@@ -381,7 +264,10 @@ async function main(): Promise<void> {
     logger.linkedinUrl(user.linkedin);
 
     try {
-      const result = await checkOpenToWork(user.linkedin, CONFIG.apifyApiToken);
+      const result = await checkOpenToWork(user.linkedin, CONFIG.apifyApiToken, {
+        maxRetries: CONFIG.maxRetries,
+        initialRetryDelayMs: CONFIG.initialRetryDelayMs,
+      });
       logger.result(result);
 
       await db.updateOpenToWorkStatus(user.username, result.openToWork);
@@ -394,8 +280,8 @@ async function main(): Promise<void> {
           stats.openToWork++;
         }
       }
-    } catch (error: any) {
-      console.log(`   ✗ Unexpected error: ${error.message}`);
+    } catch (error) {
+      console.log(`   ✗ Unexpected error: ${getErrorMessage(error)}`);
       stats.failed++;
 
       // Still update timestamp to avoid re-processing
@@ -418,6 +304,6 @@ async function main(): Promise<void> {
 
 // Run the script
 main().catch((error) => {
-  console.error('\n❌ Fatal error:', error.message);
+  console.error('\n❌ Fatal error:', getErrorMessage(error));
   process.exit(1);
 });

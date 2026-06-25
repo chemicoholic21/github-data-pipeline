@@ -32,20 +32,12 @@
  *   npx tsx src/scripts/populate-leaderboard-from-cache.ts --batch-size=500 --limit=100
  */
 
-import { db, pool } from '../db/dbClient.js';
-import { apiCacheOld, githubUsers, leaderboardOld } from '../db/schema.js';
-import {
-  upsertGithubUser,
-  upsertGithubRepo,
-  insertPullRequests
-} from '../db/upserts.js';
-import {
-  updateUserRepoScores,
-  updateUserScores,
-  analyzeUserSkills
-} from '../lib/pipeline.js';
+import { db } from '../db/dbClient.js';
+import { apiCacheOld, leaderboardOld } from '../db/schema.js';
+import { upsertGithubUser, upsertGithubRepo, insertPullRequests } from '../db/upserts.js';
+import { updateUserRepoScores, updateUserScores, analyzeUserSkills } from '../lib/pipeline.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
-import { sql, eq, and, isNull } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 // ============================================================================
 // Types for cached API responses
@@ -170,7 +162,9 @@ function extractLinkedIn(
 /**
  * Detect the type of cached response based on its structure
  */
-function detectResponseType(response: unknown): 'user_profile' | 'user_repos' | 'repo_prs' | 'unknown' {
+function detectResponseType(
+  response: unknown
+): 'user_profile' | 'user_repos' | 'repo_prs' | 'unknown' {
   if (!response || typeof response !== 'object') return 'unknown';
 
   const res = response as Record<string, unknown>;
@@ -315,7 +309,12 @@ async function processUserFromCache(
       return false;
     }
 
-    const profileResponse = profileEntries[0]!.response as CachedUserProfileResponse;
+    const profileEntry = profileEntries[0];
+    if (!profileEntry) {
+      console.log(`  [${username}] ⚠️ No profile found in cache`);
+      return false;
+    }
+    const profileResponse = profileEntry.response as CachedUserProfileResponse;
     const responseType = detectResponseType(profileResponse);
 
     if (responseType !== 'user_profile') {
@@ -339,10 +338,12 @@ async function processUserFromCache(
     const reposEntries = await db
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
-      .where(sql`
+      .where(
+        sql`
         ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NOT NULL
         AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositoriesContributedTo' IS NOT NULL
-      `)
+      `
+      )
       .limit(5000); // Process repos in chunks
 
     let reposUpserted = 0;
@@ -387,7 +388,9 @@ async function processUserFromCache(
           const prs = parseRepoPRs(prResponse, owner, repo);
 
           // Filter PRs by this user
-          const userPrs = prs.filter(pr => pr.authorLogin.toLowerCase() === username.toLowerCase());
+          const userPrs = prs.filter(
+            (pr) => pr.authorLogin.toLowerCase() === username.toLowerCase()
+          );
           if (userPrs.length > 0) {
             await insertPullRequests(userPrs);
             prsInserted += userPrs.length;
@@ -425,7 +428,11 @@ async function processUserFromCache(
 /**
  * Get all unique usernames from cached user profiles (memory efficient)
  */
-async function getAllCachedUsernames(batchSize: number, offset: number, limit: number | null): Promise<string[]> {
+async function getAllCachedUsernames(
+  batchSize: number,
+  offset: number,
+  limit: number | null
+): Promise<string[]> {
   console.log('\n[CACHE] Scanning for unique usernames in api_cache...');
 
   const usernames: string[] = [];
@@ -437,11 +444,13 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
     const batch = await db
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
-      .where(sql`
+      .where(
+        sql`
         ${apiCacheOld.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
         AND ${apiCacheOld.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
         AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NULL
-      `)
+      `
+      )
       .limit(batchSize)
       .offset(currentOffset);
 
@@ -462,7 +471,9 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
 
     // Progress update every 10k entries
     if (totalScanned % 10000 === 0) {
-      console.log(`  [SCAN] Scanned ${totalScanned} entries, found ${usernames.length} unique users...`);
+      console.log(
+        `  [SCAN] Scanned ${totalScanned} entries, found ${usernames.length} unique users...`
+      );
     }
 
     // Check if we've reached the limit
@@ -490,7 +501,10 @@ async function getAllCachedUsernames(batchSize: number, offset: number, limit: n
 /**
  * Get usernames that exist in cache but not in leaderboard
  */
-async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: number | null): Promise<string[]> {
+async function getUsernamesMissingFromLeaderboard(
+  batchSize: number,
+  limit: number | null
+): Promise<string[]> {
   console.log('\n[CACHE] Finding users in cache but missing from leaderboard...');
 
   // First get all usernames from leaderboard_old (this should be manageable)
@@ -498,7 +512,7 @@ async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: numb
     .select({ username: leaderboardOld.username })
     .from(leaderboardOld);
 
-  const leaderboardSet = new Set(leaderboardUsers.map(u => u.username.toLowerCase()));
+  const leaderboardSet = new Set(leaderboardUsers.map((u) => u.username.toLowerCase()));
   console.log(`[CACHE] Found ${leaderboardSet.size} users already in leaderboard`);
 
   // Now scan cache for users NOT in leaderboard
@@ -510,11 +524,13 @@ async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: numb
     const batch = await db
       .select({ response: apiCacheOld.response })
       .from(apiCacheOld)
-      .where(sql`
+      .where(
+        sql`
         ${apiCacheOld.response}::jsonb -> 'user' ->> 'login' IS NOT NULL
         AND ${apiCacheOld.response}::jsonb -> 'user' -> 'followers' IS NOT NULL
         AND ${apiCacheOld.response}::jsonb -> 'user' -> 'repositories' IS NULL
-      `)
+      `
+      )
       .limit(batchSize)
       .offset(currentOffset);
 
@@ -534,7 +550,9 @@ async function getUsernamesMissingFromLeaderboard(batchSize: number, limit: numb
     currentOffset += batchSize;
 
     if (totalScanned % 10000 === 0) {
-      console.log(`  [SCAN] Scanned ${totalScanned} entries, found ${missingUsernames.length} missing users...`);
+      console.log(
+        `  [SCAN] Scanned ${totalScanned} entries, found ${missingUsernames.length} missing users...`
+      );
     }
 
     if (limit && missingUsernames.length >= limit) {
@@ -635,11 +653,11 @@ Examples:
 
   try {
     // Get count of cache entries for reference
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(apiCacheOld);
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(apiCacheOld);
     stats.totalCacheEntries = Number(countResult[0]?.count || 0);
-    console.log(`\n[CACHE] Total entries in api_cache: ${stats.totalCacheEntries.toLocaleString()}`);
+    console.log(
+      `\n[CACHE] Total entries in api_cache: ${stats.totalCacheEntries.toLocaleString()}`
+    );
 
     // Determine which users to process
     let usersToProcess: string[];
@@ -671,7 +689,9 @@ Examples:
 
       // Progress update every 50 users
       if ((i + 1) % 50 === 0) {
-        console.log(`\n[PROGRESS] ${i + 1}/${usersToProcess.length} users processed (${stats.usersPopulated} populated, ${stats.usersScored} scored, ${stats.errors} errors)`);
+        console.log(
+          `\n[PROGRESS] ${i + 1}/${usersToProcess.length} users processed (${stats.usersPopulated} populated, ${stats.usersScored} scored, ${stats.errors} errors)`
+        );
       }
     }
 
@@ -690,7 +710,6 @@ Examples:
       console.log('\n  ✅ Database updated successfully');
     }
     console.log('═'.repeat(70));
-
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`\n[FATAL] ${errorMsg}`);

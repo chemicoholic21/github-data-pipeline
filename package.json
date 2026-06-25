@@ -15,14 +15,12 @@
     "enrich-linkedin": "tsx src/scripts/enrich-linkedin-apify.ts",
     "enrich-linkedin-sf": "tsx src/scripts/enrich-linkedin-sf.ts",
     "db:push": "drizzle-kit push",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "node --import tsx --test test/*.test.ts",
-    "test:pipeline": "tsx scripts/test-pipeline.ts",
     "sql": "tsx src/scripts/run-sql.ts",
     "sql:populate-leaderboard": "tsx src/scripts/run-sql.ts populate-leaderboard",
-    "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses",
-    "verify:rename": "tsx scripts/verify-rename.ts"
+    "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses"
   },
   "keywords": [],
   "author": "",

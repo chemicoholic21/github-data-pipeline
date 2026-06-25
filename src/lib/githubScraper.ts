@@ -236,7 +236,9 @@ const extractLinkedIn = (
     const match = websiteUrl.match(linkedinRegex);
     if (match) return `https://linkedin.com/in/${match[1]}`;
   }
-  console.log(`[SCRAPER] No LinkedIn found for bio="${bio?.slice(0,80)}" websiteUrl="${websiteUrl}"`);
+  console.log(
+    `[SCRAPER] No LinkedIn found for bio="${bio?.slice(0, 80)}" websiteUrl="${websiteUrl}"`
+  );
   return null;
 };
 
@@ -283,7 +285,10 @@ export async function fetchGithubUser(username: string, forceRefresh = false): P
 /**
  * Fetches repositories a user has contributed to or owns.
  */
-export async function fetchUserRepositories(username: string, forceRefresh = false): Promise<Repository[]> {
+export async function fetchUserRepositories(
+  username: string,
+  forceRefresh = false
+): Promise<Repository[]> {
   console.log(`[API] Fetching repositories for: ${username}`);
   const res = await gitHubGraphqlClient.request<UserReposResponse>({
     query: GET_USER_REPOS_QUERY,
@@ -332,7 +337,11 @@ export async function fetchUserRepositories(username: string, forceRefresh = fal
 /**
  * Fetches merged pull requests for a specific repository.
  */
-export async function fetchPullRequestsForRepo(owner: string, repo: string, forceRefresh = false): Promise<PullRequest[]> {
+export async function fetchPullRequestsForRepo(
+  owner: string,
+  repo: string,
+  forceRefresh = false
+): Promise<PullRequest[]> {
   console.log(`[API] Fetching PRs for: ${owner}/${repo}`);
   const res = await gitHubGraphqlClient.request<RepoPrsResponse>({
     query: GET_REPO_PRS_QUERY,

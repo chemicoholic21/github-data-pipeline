@@ -14,7 +14,7 @@
  *   npx tsx src/scripts/run-sql.ts populate-analyses
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { db } from '../db/dbClient.js';
@@ -54,7 +54,7 @@ async function runSqlFile(scriptName: string): Promise<void> {
     const sqlContent = readFileSync(filePath, 'utf-8');
 
     // Count statements (rough estimate)
-    const statementCount = sqlContent.split(';').filter(s => s.trim()).length;
+    const statementCount = sqlContent.split(';').filter((s) => s.trim()).length;
     console.log(`📊 Statements: ~${statementCount}`);
     console.log();
     console.log('─'.repeat(70));
@@ -78,7 +78,6 @@ async function runSqlFile(scriptName: string): Promise<void> {
       console.log('Result:');
       console.table(result);
     }
-
   } catch (error: unknown) {
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -101,8 +100,6 @@ async function runSqlFile(scriptName: string): Promise<void> {
 }
 
 function listAvailableScripts(): void {
-  const { readdirSync } = require('fs');
-
   try {
     const files = readdirSync(SQL_DIR)
       .filter((f: string) => f.endsWith('.sql'))
