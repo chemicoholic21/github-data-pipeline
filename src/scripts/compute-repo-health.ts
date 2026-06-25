@@ -36,6 +36,7 @@ import { fetchRepoHealth } from '../lib/githubScraper.js';
 import { computeContributionScore } from '../lib/scoring.js';
 import { upsertRepoHealth } from '../db/upserts.js';
 import { pauseRefresh, resumeRefresh } from '../utils/pauseSwitch.js';
+import { sleep, backoffDelay } from '../utils/async.js';
 
 const MIN_STARS = Number(process.env.REPO_HEALTH_MIN_STARS ?? 100);
 const AFTER_DAYS = Number(process.env.REPO_HEALTH_AFTER_DAYS ?? 7);
@@ -50,8 +51,6 @@ const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 let stopping = false;
 function installShutdown() {
@@ -127,7 +126,7 @@ async function processRepo(owner: string, name: string): Promise<boolean> {
         (e as Error).message
       );
       if (attempt < RETRY_MAX_ATTEMPTS) {
-        await sleep(RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1));
+        await sleep(backoffDelay(attempt, RETRY_BASE_DELAY_MS));
       }
     }
   }

@@ -5,14 +5,11 @@ import { Octokit } from '@octokit/rest';
 import { getBestToken, updateTokenRateLimit, markTokenExhausted } from '../github/tokenPool.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getCachedUser } from '../lib/cache.js';
+import { sleep } from '../utils/async.js';
 
 const CONCURRENCY = 1;
 const WAIT_TIME_MS = 5 * 60 * 1000; // 5 minutes for "all tokens exhausted" case
 const BATCH_DELAY_MS = 1500; // 1.5 seconds between batches
-
-async function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function bulkDiscover(location: string, startRangeIndex: number = 0, startPage: number = 1) {
   console.log(`Starting High-Efficiency Pipeline for: ${location}`);

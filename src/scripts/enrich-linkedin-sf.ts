@@ -31,6 +31,8 @@
 
 import { config } from 'dotenv';
 import { neon } from '@neondatabase/serverless';
+import { checkOpenToWork, type OpenToWorkResult } from '../lib/linkedinOpenToWork.js';
+import { sleep } from '../utils/async.js';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -178,186 +180,9 @@ interface LeaderboardUser {
   is_open_to_work: boolean | null;
 }
 
-export interface OpenToWorkResult {
-  success: boolean;
-  openToWork: boolean | null;
-  error?: string;
-  isRetryable?: boolean; // Indicates if the error is transient
-  errorCode?: string; // Error code for tracking
-}
-
 interface UpdateOptions {
   markPermanentFailure?: boolean;
   errorCode?: string | null;
-}
-
-// ============================================================================
-// Apify API Client
-// ============================================================================
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Determine if an HTTP status code is retryable
- */
-function isRetryableStatusCode(status: number): boolean {
-  return status >= 500 || status === 429;
-}
-
-/**
- * Determine if an error message indicates a retryable error
- */
-function isRetryableError(error: string | undefined): boolean {
-  if (!error) return false;
-  return (
-    error.includes('timeout') ||
-    error.includes('timed out') ||
-    error.includes('ETIMEDOUT') ||
-    error.includes('ECONNRESET') ||
-    error.includes('ECONNREFUSED') ||
-    error.includes('HTTP 5') ||
-    error.includes('HTTP 429')
-  );
-}
-
-/**
- * Check if a LinkedIn profile is "Open to Work" using Apify API (single attempt)
- */
-async function checkOpenToWorkOnce(
-  linkedinUrl: string,
-  apiToken: string
-): Promise<OpenToWorkResult> {
-  const endpoint = `https://api.apify.com/v2/acts/bestscrapers~linkedin-open-to-work-status/run-sync-get-dataset-items?token=${apiToken}`;
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        linkedin_url: linkedinUrl,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      const isRetryable = isRetryableStatusCode(response.status);
-
-      return {
-        success: false,
-        openToWork: null,
-        error: `HTTP ${response.status}: ${errorText}`,
-        isRetryable,
-        errorCode: `HTTP_${response.status}`,
-      };
-    }
-
-    const data = await response.json();
-
-    // Apify returns an array of results
-    if (Array.isArray(data) && data.length > 0) {
-      const result = data[0];
-
-      // Check for timeout error in response
-      if (result.messages && result.messages.includes('timed out')) {
-        return {
-          success: false,
-          openToWork: null,
-          error: 'API timeout',
-          isRetryable: true,
-          errorCode: 'APIFY_TIMEOUT',
-        };
-      }
-
-      // Handle different response formats
-      if (result.data && typeof result.data.open_to_work === 'boolean') {
-        return {
-          success: true,
-          openToWork: result.data.open_to_work,
-        };
-      }
-      if (typeof result.open_to_work === 'boolean') {
-        return {
-          success: true,
-          openToWork: result.open_to_work,
-        };
-      }
-    }
-
-    // Direct object response
-    if (data.data && typeof data.data.open_to_work === 'boolean') {
-      return {
-        success: true,
-        openToWork: data.data.open_to_work,
-      };
-    }
-
-    // Unexpected format - could be invalid LinkedIn URL
-    return {
-      success: false,
-      openToWork: null,
-      error: `Unexpected response format: ${JSON.stringify(data)}`,
-      isRetryable: false,
-      errorCode: 'INVALID_RESPONSE',
-    };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const isRetryable = isRetryableError(errorMsg);
-
-    return {
-      success: false,
-      openToWork: null,
-      error: errorMsg,
-      isRetryable,
-      errorCode: isRetryable ? 'TRANSIENT_ERROR' : 'UNKNOWN_ERROR',
-    };
-  }
-}
-
-/**
- * Check if a LinkedIn profile is "Open to Work" using Apify API
- * With retry logic and exponential backoff for retryable errors
- */
-export async function checkOpenToWork(
-  linkedinUrl: string,
-  apiToken: string
-): Promise<OpenToWorkResult> {
-  let lastResult: OpenToWorkResult = {
-    success: false,
-    openToWork: null,
-    error: 'Unknown error',
-    isRetryable: false,
-    errorCode: 'UNKNOWN_ERROR',
-  };
-
-  for (let attempt = 0; attempt <= CONFIG.maxRetries; attempt++) {
-    if (attempt > 0) {
-      const delayMs = CONFIG.initialRetryDelayMs * Math.pow(2, attempt - 1);
-      console.log(`   🔄 Retry ${attempt}/${CONFIG.maxRetries} after ${delayMs / 1000}s delay...`);
-      await sleep(delayMs);
-    }
-
-    lastResult = await checkOpenToWorkOnce(linkedinUrl, apiToken);
-
-    // If successful, return immediately
-    if (lastResult.success) {
-      return lastResult;
-    }
-
-    // If not retryable, return immediately
-    if (!lastResult.isRetryable) {
-      return lastResult;
-    }
-
-    // Log retry attempt for retryable errors
-    if (attempt < CONFIG.maxRetries) {
-      console.log(`   ⚠ ${lastResult.error} - will retry...`);
-    }
-  }
-
-  // All retries exhausted
-  return lastResult;
 }
 
 // ============================================================================
@@ -950,7 +775,10 @@ async function main(): Promise<void> {
     logger.linkedinUrl(user.linkedin);
 
     try {
-      const result = await checkOpenToWork(user.linkedin, CONFIG.apifyApiToken);
+      const result = await checkOpenToWork(user.linkedin, CONFIG.apifyApiToken, {
+        maxRetries: CONFIG.maxRetries,
+        initialRetryDelayMs: CONFIG.initialRetryDelayMs,
+      });
 
       // Determine if this is a permanent failure
       // Permanent: non-retryable errors after all retries exhausted

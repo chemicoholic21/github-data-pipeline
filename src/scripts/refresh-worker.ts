@@ -29,6 +29,7 @@ import { db, pool } from '../lib/db.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getBestToken } from '../github/tokenPool.js';
 import { isRefreshPaused, readPauseInfo } from '../utils/pauseSwitch.js';
+import { sleep, backoffDelay } from '../utils/async.js';
 
 const REFRESH_AFTER_DAYS = Number(process.env.REFRESH_AFTER_DAYS ?? 30);
 const BATCH_SIZE = Number(process.env.REFRESH_BATCH_SIZE ?? 200);
@@ -40,8 +41,6 @@ const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Graceful shutdown so SIGTERM (systemctl stop / Ctrl+C) closes the pool cleanly.
 let stopping = false;
@@ -196,7 +195,7 @@ async function main() {
         }
 
         if (attempt < RETRY_MAX_ATTEMPTS) {
-          const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+          const delay = backoffDelay(attempt, RETRY_BASE_DELAY_MS);
           console.log(`[worker] retrying ${username} in ${delay / 1000}s...`);
           await sleep(delay);
         }
