@@ -162,6 +162,28 @@ Run `populate-analyses` before `populate-leaderboard` if recomputing from scratc
 
 ---
 
+## Development
+
+Type checking, linting, formatting, and tests all run locally with no database required:
+
+```bash
+npm run build     # tsc — type-check and emit to dist/
+npm run lint      # eslint (flat config in eslint.config.js)
+npm run format    # prettier --write over src/
+npm test          # unit tests (node --test) for the scoring functions
+```
+
+The whole `src/` tree type-checks under `strict` mode (including
+`noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`), and ESLint runs
+clean. Prettier settings live in `.prettierrc` (single quotes, 100-col width).
+
+Shared helpers live in `src/utils/async.ts` (`sleep`, `backoffDelay`,
+`getErrorMessage`), and the Apify "open to work" client is shared by both
+enrichment scripts via `src/lib/linkedinOpenToWork.ts` — prefer reusing these
+over re-implementing them per script.
+
+---
+
 ## Scoring
 
 ```
@@ -196,4 +218,4 @@ Full schema in `schema.sql`. Tables:
 | **Current** | `token_rate_limit` | Infra: rate limit tracking |
 | **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
 
-> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor, then verify with `npm run verify:rename` or `npx tsx src/scripts/verify-rename.ts`.
+> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor.
