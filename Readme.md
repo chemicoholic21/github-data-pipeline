@@ -112,12 +112,12 @@ npx tsx src/scripts/refresh-worker.ts
 
 **Environment tunables:**
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `REFRESH_AFTER_DAYS` | 30 | Days before a profile is considered stale |
-| `REFRESH_BATCH_SIZE` | 200 | Users to fetch per batch |
-| `PER_USER_DELAY_MS` | 1500 | Delay between users (rate limit safety) |
-| `IDLE_SLEEP_MS` | 300000 | Sleep when no stale users (5 min) |
+| Variable             | Default | Description                               |
+| -------------------- | ------- | ----------------------------------------- |
+| `REFRESH_AFTER_DAYS` | 30      | Days before a profile is considered stale |
+| `REFRESH_BATCH_SIZE` | 200     | Users to fetch per batch                  |
+| `PER_USER_DELAY_MS`  | 1500    | Delay between users (rate limit safety)   |
+| `IDLE_SLEEP_MS`      | 300000  | Sleep when no stale users (5 min)         |
 
 ---
 
@@ -196,13 +196,13 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 **Experience levels:**
 
-| Score | Label |
-|---|---|
-| < 10 | Newcomer |
-| 10–99 | Contributor |
-| 100–499 | Active Contributor |
-| 500–1,999 | Core Contributor |
-| ≥ 2,000 | Open Source Leader |
+| Score     | Label              |
+| --------- | ------------------ |
+| < 10      | Newcomer           |
+| 10–99     | Contributor        |
+| 100–499   | Active Contributor |
+| 500–1,999 | Core Contributor   |
+| ≥ 2,000   | Open Source Leader |
 
 ---
 
@@ -210,12 +210,12 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 Full schema in `schema.sql`. Tables:
 
-| Status | Tables | Purpose |
-|--------|--------|---------|
-| **Current** | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores |
-| **Current** | `leaderboard`, `api_cache` | Consolidated leaderboard, parsed cache |
-| **Current** | `conversations`, `messages` | Chat system |
-| **Current** | `token_rate_limit` | Infra: rate limit tracking |
-| **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old` | Legacy tables - kept for backward compatibility |
+| Status         | Tables                                                                                                                   | Purpose                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| **Current**    | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores                  |
+| **Current**    | `leaderboard`, `api_cache`                                                                                               | Consolidated leaderboard, parsed cache          |
+| **Current**    | `conversations`, `messages`                                                                                              | Chat system                                     |
+| **Current**    | `token_rate_limit`                                                                                                       | Infra: rate limit tracking                      |
+| **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old`                                                          | Legacy tables - kept for backward compatibility |
 
 > **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor.
