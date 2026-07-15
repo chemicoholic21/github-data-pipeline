@@ -1,0 +1,3 @@
+# Keep shell scripts LF so they run under bash on Linux/WSL even when
+# the repo is checked out on Windows (avoids the `bash\r` shebang error).
+*.sh text eol=lf
