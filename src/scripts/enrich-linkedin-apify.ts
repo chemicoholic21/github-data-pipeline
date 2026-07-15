@@ -23,7 +23,7 @@
  */
 
 import { config } from 'dotenv';
-import { neon } from '@neondatabase/serverless';
+import { createSqlTag } from '../db/pgTag.js';
 import { checkOpenToWork, type OpenToWorkResult } from '../lib/linkedinOpenToWork.js';
 import { sleep, getErrorMessage } from '../utils/async.js';
 
@@ -52,7 +52,7 @@ const CONFIG = {
 };
 
 // Initialize database connection
-const sql = neon(CONFIG.databaseUrl);
+const sql = createSqlTag(CONFIG.databaseUrl);
 
 // Types
 interface LeaderboardUser {
