@@ -508,9 +508,7 @@ async function getUsernamesMissingFromLeaderboard(
   console.log('\n[CACHE] Finding users in cache but missing from leaderboard...');
 
   // First get all usernames from leaderboard (this should be manageable)
-  const leaderboardUsers = await db
-    .select({ username: leaderboard.username })
-    .from(leaderboard);
+  const leaderboardUsers = await db.select({ username: leaderboard.username }).from(leaderboard);
 
   const leaderboardSet = new Set(leaderboardUsers.map((u) => u.username.toLowerCase()));
   console.log(`[CACHE] Found ${leaderboardSet.size} users already in leaderboard`);
