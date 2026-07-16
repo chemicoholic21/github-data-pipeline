@@ -208,14 +208,13 @@ repo_score = stars × (user_merged_prs / total_merged_prs)
 
 ## Database
 
-Full schema in `schema.sql`. Tables:
+The canonical schema is the Drizzle definition in `src/db/schema.ts` (applied with
+`npm run db:push`). Tables:
 
-| Status         | Tables                                                                                                                   | Purpose                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| **Current**    | `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores                  |
-| **Current**    | `leaderboard`, `api_cache`                                                                                               | Consolidated leaderboard, parsed cache          |
-| **Current**    | `conversations`, `messages`                                                                                              | Chat system                                     |
-| **Current**    | `token_rate_limit`                                                                                                       | Infra: rate limit tracking                      |
-| **Deprecated** | `users_old`, `analyses_old`, `leaderboard_old`, `api_cache_old`                                                          | Legacy tables - kept for backward compatibility |
-
-> **Note:** The consolidated tables were previously named `leaderboard_v2` / `api_cache_v2`. They are now just `leaderboard` / `api_cache`. To apply the rename on an existing database, run `sql/rename-v2-to-primary.sql` in your SQL editor.
+| Tables                                                                                                                   | Purpose                                |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| `github_users`, `github_repos`, `github_pull_requests`, `user_repo_scores`, `user_scores`, `skills`, `user_skill_scores` | Pipeline: scraped data, scores         |
+| `repo_health`                                                                                                            | Per-repo contribution-friendliness     |
+| `leaderboard`, `api_cache`                                                                                               | Consolidated leaderboard, parsed cache |
+| `conversations`, `messages`                                                                                              | Chat system                            |
+| `token_rate_limit`                                                                                                       | Infra: rate limit tracking             |

@@ -1,7 +1,7 @@
 {
   "name": "github-data-pipeline",
   "version": "1.0.0",
-  "description": "",
+  "description": "Headless TypeScript pipeline that discovers GitHub developers, scores their open-source contributions, and stores ranked profiles in PostgreSQL.",
   "main": "dist/cli.js",
   "type": "module",
   "scripts": {
@@ -22,13 +22,19 @@
     "sql:populate-leaderboard": "tsx src/scripts/run-sql.ts populate-leaderboard",
     "sql:populate-analyses": "tsx src/scripts/run-sql.ts populate-analyses"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "github",
+    "graphql",
+    "postgres",
+    "drizzle",
+    "leaderboard",
+    "developer-scoring"
+  ],
+  "author": "chemicoholic21",
   "license": "ISC",
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/ioredis": "^5.0.0",
     "@types/node": "^25.5.0",
     "@types/pg": "^8.11.6",
     "@typescript-eslint/eslint-plugin": "^8.58.1",
@@ -37,7 +43,6 @@
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.2",
-    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },
@@ -45,12 +50,9 @@
     "@neondatabase/serverless": "^1.0.2",
     "@octokit/graphql": "^9.0.3",
     "@octokit/rest": "^20.0.2",
-    "@upstash/redis": "^1.37.0",
     "axios": "^1.14.0",
-    "bullmq": "^5.71.1",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.2",
-    "ioredis": "^5.10.1",
     "pg": "^8.20.0",
     "zod": "^4.3.6"
   }

@@ -1,5 +1,3 @@
-#!/usr/bin/env npx ts-node
-
 /**
  * LinkedIn Open-to-Work Status Enrichment Script - San Francisco Bay Area
  *

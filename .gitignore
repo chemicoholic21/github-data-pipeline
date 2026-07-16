@@ -37,11 +37,14 @@ Thumbs.db
 # If you have a build directory that is not `dist`
 # build/
 
-# Compiled JavaScript output
+# Compiled JavaScript output (build emits to dist/, ignored above)
 *.js
 *.js.map
 *.d.ts
 *.d.ts.map
+# ...but keep tracked JS config files that live at the repo root
+!eslint.config.js
+!*.config.js
 
 # Use pnpm, ignore npm lock file
 package-lock.json
