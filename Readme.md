@@ -118,6 +118,26 @@ npx tsx src/scripts/refresh-worker.ts
 | `REFRESH_BATCH_SIZE` | 200     | Users to fetch per batch                  |
 | `PER_USER_DELAY_MS`  | 1500    | Delay between users (rate limit safety)   |
 | `IDLE_SLEEP_MS`      | 300000  | Sleep when no stale users (5 min)         |
+| `ONESHOT`            | 0       | `1` = process one batch and exit          |
+| `LIMIT`              | —       | Batch size for a one-shot run             |
+
+**Scheduled mode (run every 10 minutes instead of a daemon):**
+
+Each tick refreshes the oldest stale users via the GitHub GraphQL API and updates
+every table — including `api_cache`, which is **upserted by `cache_key`** so a
+refresh updates the existing row in place rather than inserting a duplicate.
+
+```bash
+# Run a single batch and exit (what the scheduler calls)
+ONESHOT=1 LIMIT=50 npm run refresh-worker
+
+# deploy/refresh-cron.sh wraps that with flock (no overlapping runs).
+# cron — every 10 minutes:
+*/10 * * * * /root/github-data-pipeline/deploy/refresh-cron.sh >> /root/github-data-pipeline/refresh-cron.log 2>&1
+```
+
+See `deploy/refresh-cron.sh` for a ready-to-use cron line and an equivalent
+systemd timer.
 
 ---
 

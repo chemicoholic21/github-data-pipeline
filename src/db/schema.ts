@@ -247,7 +247,11 @@ export const apiCache = pgTable('api_cache', {
   cacheType: text('cache_type').notNull(), // e.g. "github"
   cacheSubtype: text('cache_subtype').notNull(), // e.g. "graphql", "rest"
   cacheRef: text('cache_ref').notNull(), // e.g. username or repo name
-  cacheKey: text('cache_key').notNull(), // Original full key (unique)
+  // UNIQUE is load-bearing: setCachedApiResponse upserts with
+  // `ON CONFLICT (cache_key) DO UPDATE`, so a refresh updates the existing row
+  // in place instead of inserting a duplicate. Declaring it here keeps
+  // `drizzle-kit push` from dropping the constraint.
+  cacheKey: text('cache_key').notNull().unique(), // Original full key
   response: jsonb('response').notNull(),
   cachedAt: timestamp('cached_at'),
   expiresAt: timestamp('expires_at'),
