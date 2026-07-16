@@ -1,6 +1,6 @@
-import { eq, and, gt, lt, sql } from 'drizzle-orm';
+import { eq, and, gt, sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
-import { apiCacheOld } from '../db/schema.js';
+import { apiCache } from '../db/schema.js';
 import { getErrorMessage } from '../utils/async.js';
 
 const DEFAULT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -26,9 +26,9 @@ function parseCacheKey(cacheKey: string): { type: string; subtype: string; ref: 
 
 export async function getCachedApiResponse(cacheKey: string): Promise<unknown | null> {
   const rows = await db
-    .select()
-    .from(apiCacheOld)
-    .where(and(eq(apiCacheOld.cacheKey, cacheKey), gt(apiCacheOld.expiresAt, new Date())))
+    .select({ response: apiCache.response })
+    .from(apiCache)
+    .where(and(eq(apiCache.cacheKey, cacheKey), gt(apiCache.expiresAt, new Date())))
     .limit(1);
 
   const row = rows[0];
@@ -51,26 +51,8 @@ export async function setCachedApiResponse(
     // Ensure response is JSON-serializable
     const serialized = JSON.parse(JSON.stringify(response));
 
-    // Write to legacy api_cache_old table
-    await db
-      .insert(apiCacheOld)
-      .values({
-        cacheKey,
-        response: serialized,
-        cachedAt: now,
-        expiresAt,
-      })
-      .onConflictDoUpdate({
-        target: apiCacheOld.cacheKey,
-        set: {
-          response: serialized,
-          cachedAt: now,
-          expiresAt,
-        },
-      });
-
-    // Write to api_cache with parsed key components
-    // Use raw SQL for upsert since cacheKey has unique constraint but is not PK
+    // Write to api_cache with parsed key components.
+    // Use raw SQL for upsert since cacheKey has a unique constraint but is not the PK.
     const parsed = parseCacheKey(cacheKey);
     const jsonResponse = JSON.stringify(serialized);
     await db.execute(sql`
@@ -88,13 +70,6 @@ export async function setCachedApiResponse(
     console.error(`[CACHE_WRITE] Error caching ${cacheKey}: ${getErrorMessage(error)}`);
     throw error;
   }
-}
-
-export async function cleanupExpiredApiCache(): Promise<number> {
-  const now = new Date();
-  await db.delete(apiCacheOld).where(lt(apiCacheOld.expiresAt, now));
-
-  return 0;
 }
 
 export async function withCache<T>(

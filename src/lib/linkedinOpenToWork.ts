@@ -56,13 +56,14 @@ export async function checkOpenToWorkOnce(
   linkedinUrl: string,
   apiToken: string
 ): Promise<OpenToWorkResult> {
-  const endpoint = `${APIFY_ENDPOINT}?token=${apiToken}`;
-
   try {
-    const response = await fetch(endpoint, {
+    // Pass the token via the Authorization header rather than the query string
+    // so it is never captured in request URLs / access logs.
+    const response = await fetch(APIFY_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiToken}`,
       },
       body: JSON.stringify({
         linkedin_url: linkedinUrl,

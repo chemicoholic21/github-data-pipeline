@@ -18,9 +18,6 @@ import {
   githubPullRequests,
   userRepoScores,
   userScores,
-  leaderboardOld,
-  usersOld,
-  analysesOld,
 } from '../db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { computeRepoScore } from './scoring.js';
@@ -183,7 +180,7 @@ export async function updateUserScores(username: string, linkedin: string | null
 
   if (repoScores.length === 0) {
     console.log(`[AGGREGATE] No repo scores found for ${username}, syncing profile only`);
-    await syncToLegacyTables({ totalScore: 0 }, username, linkedin);
+    await syncToLeaderboard({ totalScore: 0 }, username, linkedin);
     return;
   }
 
@@ -203,12 +200,12 @@ export async function updateUserScores(username: string, linkedin: string | null
     set: userScoreData,
   });
 
-  await syncToLegacyTables(userScoreData, username, linkedin);
+  await syncToLeaderboard(userScoreData, username, linkedin);
   console.log(`[AGGREGATE][COMPLETE] ✅ Score: ${totalScore.toFixed(2)}`);
 }
 
-async function syncToLegacyTables(
-  agg: { totalScore: number; contributionCount?: number },
+async function syncToLeaderboard(
+  agg: { totalScore: number },
   username: string,
   linkedin: string | null = null
 ): Promise<void> {
@@ -222,12 +219,8 @@ async function syncToLegacyTables(
     return;
   }
 
-  // ---------------------------------------------------------------------------
-  // PRIMARY WRITE FIRST: the real `leaderboard` table is the one that matters,
-  // so write it before the legacy tables. Previously the legacy writes ran
-  // first, and if either threw, this write was skipped and the leaderboard went
-  // stale. Use raw SQL to avoid schema mismatch issues.
-  // ---------------------------------------------------------------------------
+  // Write the consolidated `leaderboard` row. Use raw SQL to avoid schema
+  // mismatch issues.
   console.log(`[SYNC] Leaderboard data for ${username}: location="${user.location ?? 'null'}"`);
 
   await db.execute(sql`
@@ -270,71 +263,6 @@ async function syncToLegacyTables(
       updated_at = NOW()
   `);
   console.log(`[SYNC] ✅ Synced ${username} to leaderboard`);
-
-  // ---------------------------------------------------------------------------
-  // LEGACY MIRRORS (best-effort): isolate these so a failure in either one can
-  // never block the primary leaderboard write above.
-  // ---------------------------------------------------------------------------
-  try {
-    const legacyUserData = {
-      username: user.username,
-      name: user.name ?? null,
-      avatarUrl: user.avatarUrl ?? null,
-      bio: user.bio ?? null,
-      company: user.company ?? null,
-      blog: user.blog ?? null,
-      location: user.location ?? null,
-      email: user.email ?? null,
-      twitterUsername: user.twitterUsername ?? null,
-      hireable: user.hireable ?? null,
-      websiteUrl: user.blog ?? null,
-      followers: user.followers ?? 0,
-      following: user.following ?? 0,
-      publicRepos: 0,
-      score: agg.totalScore ?? 0,
-      lastFetched: new Date(),
-      updatedAt: new Date(),
-    };
-
-    await db.insert(usersOld).values(legacyUserData).onConflictDoUpdate({
-      target: usersOld.username,
-      set: legacyUserData,
-    });
-    console.log(`[SYNC] ✅ Synced ${username} to users_old table`);
-  } catch (error) {
-    console.error(
-      `[SYNC] ⚠️ users_old mirror failed for ${username} (leaderboard already updated): ${getErrorMessage(error)}`
-    );
-  }
-
-  try {
-    const leaderboardData = {
-      username: user.username,
-      name: user.name ?? null,
-      avatarUrl: user.avatarUrl ?? null,
-      totalScore: agg.totalScore,
-      // Profile fields - propagate from githubUsers
-      company: user.company ?? null,
-      blog: user.blog ?? null,
-      location: user.location ?? null,
-      email: user.email ?? null,
-      bio: user.bio ?? null,
-      twitterUsername: user.twitterUsername ?? null,
-      linkedin: linkedin ?? null,
-      hireable: user.hireable ?? false,
-      updatedAt: new Date(),
-    };
-
-    await db.insert(leaderboardOld).values(leaderboardData).onConflictDoUpdate({
-      target: leaderboardOld.username,
-      set: leaderboardData,
-    });
-    console.log(`[SYNC] ✅ Synced ${username} to leaderboard_old table`);
-  } catch (error) {
-    console.error(
-      `[SYNC] ⚠️ leaderboard_old mirror failed for ${username} (leaderboard already updated): ${getErrorMessage(error)}`
-    );
-  }
 }
 
 /**
@@ -488,17 +416,7 @@ export async function analyzeUserSkills(username: string) {
       data: 0,
     };
 
-    const topRepos: Array<{
-      name: string;
-      owner: string;
-      stars: number;
-      prs: number;
-      score: number;
-      categories: string[];
-    }> = [];
-    const languageFreq: Record<string, number> = {};
     const skillsSet = new Set<string>();
-    let totalContributions = 0;
 
     for (const repo of userRepos) {
       const categories = categorizeRepo(repo);
@@ -522,60 +440,18 @@ export async function analyzeUserSkills(username: string) {
         }
       }
 
-      // Track for top repos
-      topRepos.push({
-        name: repo.repoName,
-        owner: repo.ownerLogin,
-        stars: repo.stars,
-        prs: prCount,
-        score: repoScore,
-        categories,
-      });
-
-      // Track languages
-      if (repo.primaryLanguage) {
-        languageFreq[repo.primaryLanguage] = (languageFreq[repo.primaryLanguage] || 0) + 1;
-      }
-
       // Track skills from topics
       if (repo.topics && Array.isArray(repo.topics)) {
         for (const topic of repo.topics) {
           skillsSet.add(topic.toLowerCase());
         }
       }
-
-      totalContributions += prCount;
     }
-
-    // Sort and get top 5 repos
-    const topReposList = topRepos.sort((a, b) => b.score - a.score).slice(0, 5);
 
     // Sort and get top skills
     const topSkills = Array.from(skillsSet).sort().slice(0, 10);
 
     const totalScore = Object.values(categoryScores).reduce((a, b) => a + b, 0);
-
-    const analysisData = {
-      id: username.toLowerCase(),
-      username,
-      totalScore,
-      aiScore: categoryScores.ai ?? 0,
-      backendScore: categoryScores.backend ?? 0,
-      frontendScore: categoryScores.frontend ?? 0,
-      devopsScore: categoryScores.devops ?? 0,
-      dataScore: categoryScores.data ?? 0,
-      uniqueSkillsJson: topSkills,
-      topReposJson: topReposList,
-      languagesJson: languageFreq,
-      contributionCount: totalContributions,
-      linkedin: null,
-      cachedAt: new Date(),
-    };
-
-    await db.insert(analysesOld).values(analysisData).onConflictDoUpdate({
-      target: analysesOld.id,
-      set: analysisData,
-    });
 
     // Update leaderboard with skill scores using raw SQL
     const skillsArray = `{${topSkills.map((s) => `"${s}"`).join(',')}}`;

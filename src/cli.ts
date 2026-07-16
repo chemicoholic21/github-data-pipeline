@@ -6,7 +6,6 @@ async function main() {
   console.log('github-data-pipeline started!');
   console.log('Environment Configuration:');
   console.log(`- Node Env: ${config.nodeEnv}`);
-  console.log(`- Database URL: ${config.databaseUrl}`);
   console.log(`- Number of GitHub tokens: ${config.githubTokens.length}`);
 
   // Start the worker (it's already configured to listen for jobs)

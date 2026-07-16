@@ -91,7 +91,6 @@ export const config = {
 if (config.nodeEnv === 'development') {
   console.log('Environment variables loaded:');
   console.log(`NODE_ENV: ${config.nodeEnv}`);
-  console.log(`DATABASE_URL: ${config.databaseUrl}`);
   console.log(`GITHUB_TOKENS count: ${config.githubTokens.length}`);
   console.log(`GITHUB_TOKEN_INDICES: ${tokenIndices ? `[${tokenIndices.join(',')}]` : 'all'}`);
 }

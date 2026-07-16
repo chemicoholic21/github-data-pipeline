@@ -13,86 +13,8 @@ import {
 } from 'drizzle-orm/pg-core';
 
 // =============================================================================
-// LEGACY TABLES - kept for backward compatibility, auto-synced during Stage 3
-// =============================================================================
-
-// Legacy user profiles - use github_users or leaderboard instead
-export const usersOld = pgTable(
-  'users_old',
-  {
-    username: text('username').primaryKey(),
-    avatarUrl: text('avatar_url'),
-    bio: text('bio'),
-    followers: integer('followers').notNull().default(0),
-    following: integer('following').notNull().default(0),
-    publicRepos: integer('public_repos').notNull().default(0),
-    score: real('score'),
-    name: text('name'),
-    company: text('company'),
-    blog: text('blog'),
-    location: text('location'),
-    email: text('email'),
-    twitterUsername: text('twitter_username'),
-    linkedin: text('linkedin'),
-    hireable: boolean('hireable'),
-    websiteUrl: text('website_url'),
-    createdAt: timestamp('created_at'),
-    updatedAt: timestamp('updated_at'),
-    lastFetched: timestamp('last_fetched').notNull().defaultNow(),
-    rawJson: jsonb('raw_json'),
-  },
-  (table) => ({
-    idxUsersOldLastFetched: index('idx_users_old_last_fetched').on(table.lastFetched),
-    idxUsersOldScore: index('idx_users_old_score').on(table.score),
-    idxUsersOldFollowers: index('idx_users_old_followers').on(table.followers),
-  })
-);
-
-// Legacy repos - use github_repos instead
-export const reposOld = pgTable(
-  'repos_old',
-  {
-    id: text('id').primaryKey(),
-    username: text('username').notNull(),
-    repoName: text('repo_name').notNull(),
-    fullName: text('full_name').notNull(),
-    stars: integer('stars').notNull().default(0),
-    forks: integer('forks').notNull().default(0),
-    language: text('language'),
-    description: text('description'),
-    url: text('url'),
-    pushedAt: timestamp('pushed_at'),
-    isFork: boolean('is_fork').notNull().default(false),
-    topics: jsonb('topics'),
-    languages: jsonb('languages'),
-    mergedPrCount: integer('merged_pr_count').notNull().default(0),
-    mergedPrsByUserCount: integer('merged_prs_by_user_count').notNull().default(0),
-  },
-  (table) => ({
-    idxReposOldUsername: index('idx_repos_old_username').on(table.username),
-    idxReposOldStars: index('idx_repos_old_stars').on(table.stars),
-    idxReposOldFullName: index('idx_repos_old_full_name').on(table.fullName),
-  })
-);
-
-// =============================================================================
 // INFRASTRUCTURE TABLES - caching and rate limiting
 // =============================================================================
-
-// GitHub API response cache - SHA-256 keyed, 30-day TTL
-// Use api_cache for parsed/filterable cache access
-export const apiCacheOld = pgTable(
-  'api_cache_old',
-  {
-    cacheKey: text('cache_key').primaryKey(), // SHA-256 hash of request
-    response: jsonb('response').notNull(), // Raw API response
-    cachedAt: timestamp('cached_at').notNull().defaultNow(),
-    expiresAt: timestamp('expires_at').notNull(),
-  },
-  (table) => ({
-    idxApiCacheOldExpiresAt: index('idx_api_cache_old_expires_at').on(table.expiresAt),
-  })
-);
 
 // Tracks rate limit state per GitHub token for automatic rotation
 export const tokenRateLimit = pgTable('token_rate_limit', {
@@ -100,57 +22,6 @@ export const tokenRateLimit = pgTable('token_rate_limit', {
   remaining: integer('remaining').notNull().default(5000), // Remaining API calls
   resetTime: integer('reset_time').notNull().default(0), // Unix timestamp when limit resets
   lastUpdated: timestamp('last_updated').notNull().defaultNow(),
-});
-
-// =============================================================================
-// PIPELINE TABLES - scoring and analysis (Stage 4)
-// =============================================================================
-
-// Skill breakdown per user - AI, Backend, Frontend, DevOps, Data scores
-// Populated by sql/populate-analyses.sql from repos + PRs
-export const analysesOld = pgTable('analyses_old', {
-  id: text('id').primaryKey(),
-  username: text('username').notNull(),
-  totalScore: real('total_score').notNull().default(0),
-  aiScore: real('ai_score').notNull().default(0),
-  backendScore: real('backend_score').notNull().default(0),
-  frontendScore: real('frontend_score').notNull().default(0),
-  devopsScore: real('devops_score').notNull().default(0),
-  dataScore: real('data_score').notNull().default(0),
-  uniqueSkillsJson: jsonb('unique_skills_json'), // Array of skill tags
-  linkedin: text('linkedin'),
-  topReposJson: jsonb('top_repos_json'), // Top contributing repos
-  languagesJson: jsonb('languages_json'), // Language breakdown
-  contributionCount: integer('contribution_count').notNull().default(0),
-  cachedAt: timestamp('cached_at').notNull().defaultNow(),
-});
-
-// Public leaderboard - synced from analyses + github_users
-// Use leaderboard for consolidated data with OTW fields
-export const leaderboardOld = pgTable('leaderboard_old', {
-  username: text('username').primaryKey(),
-  name: text('name'),
-  avatarUrl: text('avatar_url'),
-  url: text('url'),
-  totalScore: real('total_score').notNull().default(0),
-  aiScore: real('ai_score').notNull().default(0),
-  backendScore: real('backend_score').notNull().default(0),
-  frontendScore: real('frontend_score').notNull().default(0),
-  devopsScore: real('devops_score').notNull().default(0),
-  dataScore: real('data_score').notNull().default(0),
-  uniqueSkillsJson: jsonb('unique_skills_json'),
-  company: text('company'),
-  blog: text('blog'),
-  location: text('location'),
-  email: text('email'),
-  bio: text('bio'),
-  twitterUsername: text('twitter_username'),
-  linkedin: text('linkedin'),
-  hireable: boolean('hireable').notNull().default(false),
-  isOpenToWork: boolean('is_open_to_work'),
-  otwScrapedAt: timestamp('otw_scraped_at'),
-  createdAt: timestamp('created_at'),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 // =============================================================================

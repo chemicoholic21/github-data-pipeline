@@ -30,7 +30,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { db } from '../lib/db.js';
+import { db } from '../db/dbClient.js';
 import { getBestToken } from '../github/tokenPool.js';
 import { fetchRepoHealth } from '../lib/githubScraper.js';
 import { computeContributionScore } from '../lib/scoring.js';

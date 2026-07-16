@@ -1,7 +1,7 @@
 // src/app/actions.ts
 'use server';
 
-import { sql as db } from '../lib/db.js';
+import { db } from '../db/dbClient.js';
 import { leaderboard } from '../db/schema.js';
 import { desc, gt, eq } from 'drizzle-orm';
 import { withCache } from '../lib/apiCache.js';
