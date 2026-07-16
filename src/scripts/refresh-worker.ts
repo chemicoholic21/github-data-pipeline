@@ -25,7 +25,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { db, pool } from '../lib/db.js';
+import { db, pool } from '../db/dbClient.js';
 import { runPipeline } from '../lib/pipeline.js';
 import { getBestToken } from '../github/tokenPool.js';
 import { isRefreshPaused, readPauseInfo } from '../utils/pauseSwitch.js';
