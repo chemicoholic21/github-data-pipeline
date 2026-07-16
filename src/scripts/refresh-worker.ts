@@ -13,8 +13,15 @@
  *   - When all PATs hit zero, sleeps until the earliest reset_time and resumes.
  *   - When no users are stale, idles 5 minutes and re-checks.
  *
+ * Two run modes:
+ *   - Daemon (default): while(true), idles when caught up. For tmux/systemd.
+ *   - One-shot (ONESHOT=1): process a single batch of stale users, then exit.
+ *     Made for a scheduler (cron/systemd timer) firing every N minutes — see
+ *     deploy/refresh-cron.sh.
+ *
  * Run via:
- *   npm run refresh-worker
+ *   npm run refresh-worker                       # daemon
+ *   ONESHOT=1 LIMIT=50 npm run refresh-worker    # single batch of 50, then exit
  *   (or via deploy/run-worker.sh inside tmux for crash-restart)
  *
  * Tunables (env vars, all optional):
@@ -22,6 +29,8 @@
  *   REFRESH_BATCH_SIZE   default 200
  *   PER_USER_DELAY_MS    default 1500   (pacing for secondary-rate-limit safety)
  *   IDLE_SLEEP_MS        default 300000 (5 min between empty-stale checks)
+ *   ONESHOT              default 0      (1 = process one batch and exit)
+ *   LIMIT                overrides batch size for a one-shot run
  */
 
 import { sql } from 'drizzle-orm';
@@ -41,6 +50,10 @@ const MIN_SLEEP_MS = 60_000;
 const MAX_SLEEP_MS = 60 * 60_000;
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
+// One-shot mode: process a single batch then exit (for cron / systemd timers).
+const ONESHOT = process.env.ONESHOT === '1';
+const LIMIT = process.env.LIMIT ? Number(process.env.LIMIT) : null;
+const EFFECTIVE_BATCH = LIMIT ?? BATCH_SIZE;
 
 // Graceful shutdown so SIGTERM (systemctl stop / Ctrl+C) closes the pool cleanly.
 let stopping = false;
@@ -102,7 +115,8 @@ async function sleepUntilNextReset(): Promise<void> {
 async function main() {
   installShutdown();
   console.log(
-    `[worker] starting (refresh_after=${REFRESH_AFTER_DAYS}d, batch=${BATCH_SIZE}, delay=${PER_USER_DELAY_MS}ms)`
+    `[worker] starting (refresh_after=${REFRESH_AFTER_DAYS}d, batch=${EFFECTIVE_BATCH}, ` +
+      `delay=${PER_USER_DELAY_MS}ms, oneshot=${ONESHOT})`
   );
 
   let totalProcessed = 0;
@@ -115,6 +129,10 @@ async function main() {
     // backfill is running), idle without touching the token pool so the other
     // job gets the full GitHub budget.
     if (isRefreshPaused()) {
+      if (ONESHOT) {
+        console.log('[worker] refresh paused — exiting (oneshot); next scheduled run will retry');
+        break;
+      }
       if (!wasPaused) {
         const info = readPauseInfo();
         console.log(
@@ -133,7 +151,7 @@ async function main() {
 
     let batch: string[];
     try {
-      batch = await getStaleBatch(BATCH_SIZE);
+      batch = await getStaleBatch(EFFECTIVE_BATCH);
     } catch (e) {
       const err = e as Error & { cause?: unknown };
       const cause = err.cause instanceof Error ? err.cause.message : String(err.cause ?? '');
@@ -142,6 +160,7 @@ async function main() {
         err.message,
         cause ? `(cause: ${cause})` : ''
       );
+      if (ONESHOT) throw e; // let the scheduler log the failure and retry next tick
       await sleep(IDLE_SLEEP_MS);
       continue;
     }
@@ -149,8 +168,10 @@ async function main() {
     if (batch.length === 0) {
       const upH = ((Date.now() - startedAt) / 3_600_000).toFixed(1);
       console.log(
-        `[worker] caught up (no stale users). processed=${totalProcessed} uptime=${upH}h — idling ${Math.round(IDLE_SLEEP_MS / 1000)}s`
+        `[worker] caught up (no stale users). processed=${totalProcessed} uptime=${upH}h`
       );
+      if (ONESHOT) break;
+      console.log(`[worker] idling ${Math.round(IDLE_SLEEP_MS / 1000)}s`);
       await sleep(IDLE_SLEEP_MS);
       continue;
     }
@@ -173,6 +194,13 @@ async function main() {
       } catch (e) {
         if (e instanceof Error && e.message === 'rate-limited-all-tokens') {
           totalSkippedRateLimit++;
+          if (ONESHOT) {
+            // Don't hang a scheduled run waiting for a reset; exit and let the
+            // next scheduled fire pick up where we left off.
+            console.log('[worker] all tokens exhausted — exiting (oneshot)');
+            stopping = true;
+            break;
+          }
           await sleepUntilNextReset();
           continue; // retry the same user with a fresh PAT
         }
@@ -210,11 +238,11 @@ async function main() {
       await sleep(PER_USER_DELAY_MS);
     }
 
-    if (totalProcessed % 100 < BATCH_SIZE) {
-      console.log(
-        `[worker] progress: processed=${totalProcessed}, rate-limit-waits=${totalSkippedRateLimit}`
-      );
-    }
+    console.log(
+      `[worker] progress: processed=${totalProcessed}, rate-limit-waits=${totalSkippedRateLimit}`
+    );
+
+    if (ONESHOT) break;
   }
 
   console.log('[worker] shutdown — closing pool');
