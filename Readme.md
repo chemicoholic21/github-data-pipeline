@@ -40,7 +40,7 @@ npm run db:push
 `DATABASE_URL` can point at any Postgres. For **Supabase** specifically, don't use
 the **direct** connection (`db.<ref>.supabase.co:5432`) — it is **IPv6-only**, so
 an IPv4-only host (most droplets) gets `connect ENETUNREACH ...`. Use the
-**Session pooler** string instead (Dashboard → **Connect** → *Session pooler*):
+**Session pooler** string instead (Dashboard → **Connect** → _Session pooler_):
 
 ```
 DATABASE_URL=postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require
