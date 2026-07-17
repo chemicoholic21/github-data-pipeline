@@ -30,6 +30,31 @@ cp .env.example .env   # add DATABASE_URL and GitHub tokens
 npm run db:push
 ```
 
+> Install on the machine you'll **run** on. `node_modules` ships native binaries
+> (esbuild), so a `node_modules` copied from Windows into WSL/Linux (or vice
+> versa) fails with an "installed esbuild for another platform" error — delete it
+> and reinstall in the target environment.
+
+### Database connection (Supabase / hosted Postgres)
+
+`DATABASE_URL` can point at any Postgres. For **Supabase** specifically, don't use
+the **direct** connection (`db.<ref>.supabase.co:5432`) — it is **IPv6-only**, so
+an IPv4-only host (most droplets) gets `connect ENETUNREACH ...`. Use the
+**Session pooler** string instead (Dashboard → **Connect** → _Session pooler_):
+
+```
+DATABASE_URL=postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+- Host is `...pooler.supabase.com` (IPv4); username is `postgres.<PROJECT_REF>`.
+- Use the **Session pooler (port 5432)**, not the Transaction pooler (6543) —
+  Drizzle uses prepared statements, which transaction-mode pooling breaks.
+- Append `?sslmode=require` (Supabase requires TLS).
+- URL-encode special characters in the password (`@` → `%40`, `#` → `%23`, …).
+
+On a server, put this in `.env.local` (it overrides `.env`), then run
+`npm run db:push` against the new database before starting the workers.
+
 **Run the pipeline:**
 
 ```bash
@@ -238,3 +263,16 @@ The canonical schema is the Drizzle definition in `src/db/schema.ts` (applied wi
 | `leaderboard`, `api_cache`                                                                                               | Consolidated leaderboard, parsed cache |
 | `conversations`, `messages`                                                                                              | Chat system                            |
 | `token_rate_limit`                                                                                                       | Infra: rate limit tracking             |
+
+**`api_cache` is keyed by a UNIQUE `cache_key`.** Cache writes upsert with
+`ON CONFLICT (cache_key) DO UPDATE`, so a refresh **updates the existing row in
+place** rather than inserting a duplicate. This relies on the UNIQUE constraint —
+`npm run db:push` creates it from `src/db/schema.ts`. If you migrated an existing
+database that already has duplicate `cache_key` rows, dedupe before adding the
+constraint:
+
+```sql
+DELETE FROM api_cache a USING api_cache b
+WHERE a.cache_key = b.cache_key AND a.id < b.id;   -- keep newest per key
+ALTER TABLE api_cache ADD CONSTRAINT api_cache_cache_key_key UNIQUE (cache_key);
+```
