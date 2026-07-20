@@ -85,7 +85,7 @@ This pipeline:
 
 ## Running the Pipeline
 
-> ⚠️ Scraping GitHub data takes a long time — hours for large regions. Always run inside a **tmux** session so it survives disconnects.
+
 >
 > ```bash
 > tmux new -s pipeline        # start a named session
