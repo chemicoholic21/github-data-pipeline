@@ -122,7 +122,7 @@ npx tsx src/scripts/bulk-discover.ts "Bengaluru, San Francisco" 0 5
 
 ### 2. Refresh worker (continuous profile updates)
 
-Daemon that automatically refreshes stale GitHub profiles (>30 days old). Runs indefinitely, picking the oldest users and re-running the full pipeline on each.
+Daemon that automatically refreshes stale GitHub profiles and their repositories (>30 days old). Runs indefinitely, picking the oldest users and re-running the full pipeline on each.
 
 ```bash
 # Start the refresh worker (npm)
@@ -134,6 +134,25 @@ deploy/run-worker.sh
 # Or run directly with npx/tsx
 npx tsx src/scripts/refresh-worker.ts
 ```
+
+> **Run from the project root.** `npm run refresh-worker` must be executed from
+> the directory that contains `package.json` (e.g. `/root/github-data-pipeline`).
+> Running it elsewhere fails with:
+>
+> ```
+> npm error code ENOENT
+> npm error enoent Could not read package.json: ... open '/root/package.json'
+> ```
+>
+> Fix it by `cd`-ing into the repo first:
+>
+> ```bash
+> cd /root/github-data-pipeline   # wherever you cloned it
+> npm run refresh-worker
+> ```
+>
+> The `deploy/run-worker.sh` and `deploy/refresh-cron.sh` wrappers resolve the
+> project root from their own location, so they can be launched from anywhere.
 
 **Environment tunables:**
 
