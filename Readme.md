@@ -55,6 +55,20 @@ DATABASE_URL=postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<REGION>.poole
 On a server, put this in `.env.local` (it overrides `.env`), then run
 `npm run db:push` against the new database before starting the workers.
 
+> **Troubleshooting `ENETUNREACH` (worker looks "stuck").** If a worker logs
+> `stale-batch query failed` on repeat with a cause like:
+>
+> ```
+> connect ENETUNREACH 2600:1f18:...:5432
+> ```
+>
+> it isn't hung — it's failing to reach the database and retrying on a loop. The
+> IPv6 address in the error means `DATABASE_URL` still points at the **direct**
+> Supabase endpoint (`db.<ref>.supabase.co:5432`), which is IPv6-only, from an
+> IPv4-only host. Switch `DATABASE_URL` (in `.env.local`) to the **Session
+> pooler** string above (`...pooler.supabase.com:5432`, username
+> `postgres.<PROJECT_REF>`), then restart the worker.
+
 **Run the pipeline:**
 
 ```bash
