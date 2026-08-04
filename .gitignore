@@ -49,6 +49,11 @@ Thumbs.db
 # Use pnpm, ignore npm lock file
 package-lock.json
 
+# Discovery rotation cursor + refresh lock/pause sentinels
+.discover-cursor
+.refresh-cron.lock
+.refresh-paused
+
 # Test files
 # *.test.ts
 # *.spec.ts

@@ -134,6 +134,73 @@ npx tsx src/scripts/bulk-discover.ts "Bengaluru, San Francisco" 0 5
 
 ---
 
+### 1b. Discover repositories directly (fresh contribution targets)
+
+Finds **new** open-source repos worth contributing to straight from GitHub's
+repository search — independent of which developers have been scraped. This is
+the "top of funnel" that keeps the candidate pool fresh so the health
+leaderboard isn't stuck on the same handful of repos. It rotates through a
+matrix of health-oriented queries (topic × star-band, plus per-language
+newcomer/`good-first-issues` queries), biased toward **recently-active** repos
+(`pushed:` within `DISCOVER_RECENT_DAYS`) so abandoned projects don't surface.
+
+Pipeline: `discover-repos` → `github_repos` → `compute-repo-health` → `repo_health`.
+
+```bash
+# One rotation chunk, then exit (what the scheduler calls)
+ONESHOT=1 npm run discover-repos
+
+# Continuous daemon — rotates through the whole matrix forever
+npm run discover-repos
+
+# Or run directly
+npx tsx src/scripts/discover-repos.ts
+```
+
+It only **adds** brand-new repos (`ON CONFLICT DO NOTHING`), never overwriting
+existing rows. A rotation cursor is persisted to `.discover-cursor` so each
+scheduled run continues where the last left off, then wraps.
+
+**Tunables (all optional):**
+
+| Variable                   | Default | Description                                   |
+| -------------------------- | ------- | --------------------------------------------- |
+| `DISCOVER_MIN_STARS`       | 100     | Star floor for "worth contributing to"        |
+| `DISCOVER_RECENT_DAYS`     | 180     | Only repos pushed within this window          |
+| `DISCOVER_QUERIES_PER_RUN` | 6       | Queries processed per rotation chunk          |
+| `DISCOVER_PAGES_PER_QUERY` | 2       | Search pages per query (100 repos each, ≤10)  |
+| `DISCOVER_PAGE_DELAY_MS`   | 2500    | Pacing (search API allows ~30 req/min)        |
+
+**Scheduled rotation (cron, every 15 min):** `deploy/discover-cron.sh` wraps a
+one-shot chunk with `flock` (no overlapping runs) and advances the cursor:
+
+```bash
+*/15 * * * * /root/github-data-pipeline/deploy/discover-cron.sh >> /root/github-data-pipeline/discover-cron.log 2>&1
+# Stagger the health scorer 5 min later so they don't fight for tokens:
+5-59/15 * * * * cd /root/github-data-pipeline && ONESHOT=1 LIMIT=50 npm run compute-repo-health --silent >> compute-health.log 2>&1
+```
+
+**See the ranked results** (best repos to contribute to, health-first):
+
+```sql
+SELECT full_name, stars, contribution_score, responsiveness_score,
+       throughput_score, acceptance_score, newcomer_score, liveness_score
+FROM repo_health
+WHERE gated_reason IS NULL AND confidence >= 0.5
+ORDER BY contribution_score DESC
+LIMIT 50;
+```
+
+> **Token note.** Repository search is account-gated: a GitHub account
+> **flagged as spammy** returns `422 "User flagged as spammy"` and cannot use
+> Search at all (GraphQL may still work). `discover-repos` detects this, parks
+> that token, and rotates to another account automatically — but you need at
+> least one **non-flagged** account among your `GITHUB_TOKEN_*` for discovery to
+> make progress. Tokens from **distinct accounts** also give independent
+> 5,000/hr quotas that actually add up.
+
+---
+
 ### 2. Refresh worker (continuous profile updates)
 
 Daemon that automatically refreshes stale GitHub profiles and their repositories (>30 days old). Runs indefinitely, picking the oldest users and re-running the full pipeline on each.
