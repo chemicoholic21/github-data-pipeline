@@ -86,6 +86,77 @@ export async function upsertGithubRepo(repo: Repository) {
 }
 
 /**
+ * A repository candidate discovered directly from GitHub's repository search
+ * (not via a user scrape). Only the public metadata the search API returns.
+ */
+export interface DiscoveredRepo {
+  name: string;
+  ownerLogin: string;
+  description: string | null;
+  primaryLanguage: string | null;
+  stars: number;
+  forks: number;
+  isFork: boolean;
+  isArchived: boolean;
+  topics: string[];
+  createdAt: string | null;
+  pushedAt: string | null;
+}
+
+/**
+ * Bulk-insert freshly discovered repositories into github_repos.
+ *
+ * Design notes:
+ *  - github_repos' PRIMARY KEY is repo_name (not owner/repo), a pre-existing
+ *    schema quirk. We therefore ON CONFLICT DO NOTHING so discovery only ADDS
+ *    brand-new repo names and never clobbers an existing row (which could belong
+ *    to a different owner, or already carry user-PR aggregation in total_prs).
+ *  - Per-repo health (stars/pushedAt/activity) is refreshed separately by the
+ *    compute-repo-health worker into the repo_health table, so we don't need to
+ *    overwrite existing github_repos rows here.
+ *  - Rows are de-duplicated by repo_name within the batch before insert.
+ *
+ * @returns the number of NEW rows actually inserted.
+ */
+export async function upsertDiscoveredRepos(repos: DiscoveredRepo[]): Promise<number> {
+  if (repos.length === 0) return 0;
+
+  // De-dupe by repo_name (the PK) so a single INSERT can't reference the same
+  // key twice; keep the highest-starred candidate for each name.
+  const byName = new Map<string, DiscoveredRepo>();
+  for (const r of repos) {
+    const existing = byName.get(r.name);
+    if (!existing || r.stars > existing.stars) byName.set(r.name, r);
+  }
+
+  const values = Array.from(byName.values()).map((r) => ({
+    repoName: r.name,
+    ownerLogin: r.ownerLogin,
+    fullName: `${r.ownerLogin}/${r.name}`,
+    description: r.description ?? null,
+    primaryLanguage: r.primaryLanguage,
+    languages: r.primaryLanguage ? [r.primaryLanguage] : [],
+    stars: r.stars,
+    forks: r.forks,
+    watchers: 0,
+    totalPrs: 0,
+    isFork: r.isFork,
+    isArchived: r.isArchived,
+    topics: r.topics,
+    createdAt: r.createdAt ? new Date(r.createdAt) : null,
+    pushedAt: r.pushedAt ? new Date(r.pushedAt) : null,
+    scrapedAt: new Date(),
+  }));
+
+  const result = await db.insert(githubRepos).values(values).onConflictDoNothing({
+    target: githubRepos.repoName,
+  });
+
+  // node-postgres exposes rowCount; fall back to 0 if the driver omits it.
+  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+}
+
+/**
  * Inserts a list of pull requests into the github_pull_requests table.
  */
 export async function insertPullRequests(prList: PullRequest[]) {
