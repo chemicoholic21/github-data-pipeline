@@ -8,6 +8,16 @@
  * contributed to a repo.
  */
 
+export interface RepoIssue {
+  githubIssueId: string;
+  title: string;
+  url: string;
+  authorLogin: string | null;
+  labels: string[];
+  category: 'good_first_issue' | 'help_wanted' | 'open';
+  createdAt: string | null;
+}
+
 /** Raw, un-normalized health metrics scraped per repository. */
 export interface RepoHealthMetrics {
   fullName: string; // "owner/repo"
@@ -42,6 +52,7 @@ export interface RepoHealthMetrics {
   openIssuesCount: number;
   goodFirstIssues: number;
   helpWantedIssues: number;
+  goodFirstIssueDetails?: RepoIssue[];
   hasContributing: boolean;
   hasCodeOfConduct: boolean;
   mentionableUsers: number;

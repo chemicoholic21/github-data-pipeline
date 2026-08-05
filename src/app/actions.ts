@@ -2,8 +2,8 @@
 'use server';
 
 import { db } from '../db/dbClient.js';
-import { leaderboard } from '../db/schema.js';
-import { desc, gt, eq } from 'drizzle-orm';
+import { leaderboard, repoIssues } from '../db/schema.js';
+import { desc, gt, eq, and } from 'drizzle-orm';
 import { withCache } from '../lib/apiCache.js';
 
 interface MemberProfile {
@@ -13,6 +13,14 @@ interface MemberProfile {
   total_score: number;
   bio: string | null;
   location: string | null;
+}
+
+interface RepoIssue {
+  title: string;
+  url: string;
+  authorLogin: string | null;
+  labels: string[];
+  createdAt: string | null;
 }
 
 export async function getTopMembers(limit = 10): Promise<MemberProfile[]> {
@@ -57,6 +65,34 @@ export async function getMemberProfile(username: string): Promise<MemberProfile 
         .limit(1);
 
       return (results[0] as MemberProfile) ?? null;
+    },
+    30
+  );
+}
+
+export async function getRepoIssues(fullName: string, category?: string): Promise<RepoIssue[]> {
+  const cacheKey = category ? `repo:issues:${fullName}:${category}` : `repo:issues:${fullName}`;
+  return withCache(
+    cacheKey,
+    async () => {
+      const whereClause = category
+        ? and(eq(repoIssues.fullName, fullName), eq(repoIssues.category, category))
+        : eq(repoIssues.fullName, fullName);
+
+      const results = await db
+        .select({
+          title: repoIssues.title,
+          url: repoIssues.url,
+          authorLogin: repoIssues.authorLogin,
+          labels: repoIssues.labels,
+          category: repoIssues.category,
+          createdAt: repoIssues.createdAt,
+        })
+        .from(repoIssues)
+        .where(whereClause)
+        .orderBy(repoIssues.createdAt);
+
+      return results as RepoIssue[];
     },
     30
   );
