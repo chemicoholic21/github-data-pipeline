@@ -140,12 +140,15 @@ export const repoHealth = pgTable(
   })
 );
 
-// Individual good-first issues for top repositories.
+// Individual issues for top repositories.
+// An issue can appear under multiple categories (e.g. an issue with both
+// "good first issue" AND "help wanted" labels is stored twice, once per category).
 export const repoIssues = pgTable(
   'repo_issues',
   {
     fullName: text('full_name').notNull(),
     githubIssueId: text('github_issue_id').notNull(),
+    category: text('category').notNull(),
     title: text('title').notNull(),
     url: text('url').notNull(),
     authorLogin: text('author_login'),
@@ -154,7 +157,7 @@ export const repoIssues = pgTable(
     fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.fullName, table.githubIssueId] }),
+    pk: primaryKey({ columns: [table.fullName, table.githubIssueId, table.category] }),
     idxRepoIssuesFullName: index('idx_repo_issues_full_name').on(table.fullName),
   })
 );

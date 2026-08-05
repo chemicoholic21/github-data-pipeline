@@ -448,27 +448,75 @@ const GET_REPO_HEALTH_QUERY = `
 
 const HOUR_MS = 3_600_000;
 
-interface RepoGoodFirstIssuesResponse {
-  repository: {
-    goodFirstIssues: {
-      totalCount: number;
-      nodes: Array<{
-        id: string;
-        title: string;
-        url: string;
-        author: { login: string } | null;
-        labels: { nodes: Array<{ name: string }> };
-        createdAt: string | null;
-      }>;
-    };
-  } | null;
+interface RepoIssuesData {
+  goodFirstIssues: {
+    totalCount: number;
+    pageInfo: PageInfo;
+    nodes: Array<{
+      id: string;
+      title: string;
+      url: string;
+      author: { login: string } | null;
+      labels: { nodes: Array<{ name: string }> };
+      createdAt: string | null;
+    }>;
+  };
+  helpWantedIssues: {
+    totalCount: number;
+    pageInfo: PageInfo;
+    nodes: Array<{
+      id: string;
+      title: string;
+      url: string;
+      author: { login: string } | null;
+      labels: { nodes: Array<{ name: string }> };
+      createdAt: string | null;
+    }>;
+  };
+  allOpenIssues: {
+    totalCount: number;
+    pageInfo: PageInfo;
+    nodes: Array<{
+      id: string;
+      title: string;
+      url: string;
+      author: { login: string } | null;
+      labels: { nodes: Array<{ name: string }> };
+      createdAt: string | null;
+    }>;
+  };
 }
 
-const GET_GOOD_FIRST_ISSUES_QUERY = `
-  query GetGoodFirstIssues($owner: String!, $name: String!, $first: Int!) {
+const GET_REPO_ISSUES_QUERY = `
+  query GetRepoIssues($owner: String!, $name: String!, $first: Int!, $after: String) {
     repository(owner: $owner, name: $name) {
-      goodFirstIssues: issues(states: OPEN, labels: ["good first issue"], first: $first) {
+      goodFirstIssues: issues(states: OPEN, labels: ["good first issue"], first: $first, after: $after) {
         totalCount
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          title
+          url
+          author { login }
+          labels(first: 10) { nodes { name } }
+          createdAt
+        }
+      }
+      helpWantedIssues: issues(states: OPEN, labels: ["help wanted"], first: $first, after: $after) {
+        totalCount
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          title
+          url
+          author { login }
+          labels(first: 10) { nodes { name } }
+          createdAt
+        }
+      }
+      allOpenIssues: issues(states: OPEN, first: $first, after: $after) {
+        totalCount
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           title
@@ -482,32 +530,101 @@ const GET_GOOD_FIRST_ISSUES_QUERY = `
   }
 `;
 
-export async function fetchGoodFirstIssues(
+interface RepoIssuesPageResponse {
+  repository: RepoIssuesData | null;
+}
+
+interface PageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface IssuePage {
+  totalCount: number;
+  pageInfo: PageInfo;
+  nodes: Array<{
+    id: string;
+    title: string;
+    url: string;
+    author: { login: string } | null;
+    labels: { nodes: Array<{ name: string }> };
+    createdAt: string | null;
+  }>;
+}
+
+export async function fetchRepoIssues(
   owner: string,
   name: string,
   forceRefresh = false
 ): Promise<RepoIssue[]> {
-  console.log(`[API] Fetching good-first issues: ${owner}/${name}`);
-  const res = await gitHubGraphqlClient.request<RepoGoodFirstIssuesResponse>({
-    query: GET_GOOD_FIRST_ISSUES_QUERY,
-    variables: { owner, name, first: 100 },
-    operationName: 'GetGoodFirstIssues',
-    useCache: true,
-    cacheTTL: 3 * 24 * 60 * 60 * 1000, // 3 days
-    forceRefresh,
-  });
+  console.log(`[API] Fetching repo issues: ${owner}/${name}`);
+  const allIssues = new Map<string, { issue: RepoIssue; categories: Set<'good_first_issue' | 'help_wanted' | 'open'> }>();
 
-  const repo = res.repository;
-  if (!repo) return [];
+  let after: string | null = null;
+  let page = 0;
+  const MAX_PAGES = 20; // safety cap: 20 × 100 = 2000 issues max per category
 
-  return repo.goodFirstIssues.nodes.map((node) => ({
-    githubIssueId: node.id,
-    title: node.title,
-    url: node.url,
-    authorLogin: node.author?.login ?? null,
-    labels: node.labels.nodes.map((l) => l.name),
-    createdAt: node.createdAt,
-  }));
+  while (page < MAX_PAGES) {
+    const res = (await gitHubGraphqlClient.request<RepoIssuesPageResponse>({
+      query: GET_REPO_ISSUES_QUERY,
+      variables: { owner, name, first: 100, after: after ?? undefined },
+      operationName: 'GetRepoIssues',
+      useCache: page === 0, // only cache the first page
+      cacheTTL: 3 * 24 * 60 * 60 * 1000,
+      forceRefresh,
+    })) as RepoIssuesPageResponse;
+
+    const repo: RepoIssuesData | null = res.repository;
+    if (!repo) break;
+
+    const addIssues = (nodes: IssuePage['nodes'], category: 'good_first_issue' | 'help_wanted' | 'open') => {
+      for (const node of nodes) {
+        const issue: RepoIssue = {
+          githubIssueId: node.id,
+          title: node.title,
+          url: node.url,
+          authorLogin: node.author?.login ?? null,
+          labels: (node.labels.nodes as Array<{ name: string }>).map((l) => l.name),
+          category,
+          createdAt: node.createdAt,
+        };
+        const existing = allIssues.get(issue.githubIssueId);
+        if (existing) {
+          existing.categories.add(category);
+        } else {
+          allIssues.set(issue.githubIssueId, { issue, categories: new Set([category]) });
+        }
+      }
+    };
+
+    addIssues(repo.goodFirstIssues.nodes, 'good_first_issue');
+    addIssues(repo.helpWantedIssues.nodes, 'help_wanted');
+    addIssues(repo.allOpenIssues.nodes, 'open');
+
+    page++;
+
+    const anyHasNext =
+      repo.goodFirstIssues.pageInfo.hasNextPage ||
+      repo.helpWantedIssues.pageInfo.hasNextPage ||
+      repo.allOpenIssues.pageInfo.hasNextPage;
+
+    if (!anyHasNext) break;
+
+    after = repo.goodFirstIssues.pageInfo.endCursor ?? repo.helpWantedIssues.pageInfo.endCursor ?? repo.allOpenIssues.pageInfo.endCursor;
+    if (!after) break;
+  }
+
+  if (page > 1) {
+    console.log(`[API] Fetched ${page} pages for ${owner}/${name}`);
+  }
+
+  const result: RepoIssue[] = [];
+  for (const { issue, categories } of allIssues.values()) {
+    for (const category of categories) {
+      result.push({ ...issue, category });
+    }
+  }
+  return result;
 }
 
 function median(values: number[]): number | null {

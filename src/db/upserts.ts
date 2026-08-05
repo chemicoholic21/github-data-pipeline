@@ -253,6 +253,7 @@ export async function upsertRepoIssues(fullName: string, issues: RepoIssue[]) {
   const values = issues.map((issue) => ({
     fullName,
     githubIssueId: issue.githubIssueId,
+    category: issue.category,
     title: issue.title,
     url: issue.url,
     authorLogin: issue.authorLogin,
@@ -262,7 +263,7 @@ export async function upsertRepoIssues(fullName: string, issues: RepoIssue[]) {
   }));
 
   await db.insert(repoIssues).values(values).onConflictDoUpdate({
-    target: [repoIssues.fullName, repoIssues.githubIssueId],
+    target: [repoIssues.fullName, repoIssues.githubIssueId, repoIssues.category],
     set: {
       title: sql`EXCLUDED.title`,
       url: sql`EXCLUDED.url`,

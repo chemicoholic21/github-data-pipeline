@@ -21,7 +21,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
 import { getBestToken } from '../github/tokenPool.js';
-import { fetchRepoHealth, fetchGoodFirstIssues } from '../lib/githubScraper.js';
+import { fetchRepoHealth, fetchRepoIssues } from '../lib/githubScraper.js';
 import { computeContributionScore } from '../lib/scoring.js';
 import { upsertRepoHealth, upsertRepoIssues } from '../db/upserts.js';
 import { sleep, backoffDelay } from '../utils/async.js';
@@ -39,7 +39,7 @@ type CategoryKey = keyof typeof CATEGORIES;
 type CategoryColumn = (typeof CATEGORIES)[CategoryKey];
 
 const AFTER_DAYS = Number(process.env.AFTER_DAYS ?? 7);
-const LIMIT = Number(process.env.LIMIT ?? 400);
+const LIMIT = Number(process.env.LIMIT ?? 300);
 const PER_REPO_DELAY_MS = Number(process.env.PER_REPO_DELAY_MS ?? 1500);
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
@@ -122,10 +122,11 @@ async function processRepo(owner: string, name: string): Promise<boolean> {
 async function processIssues(owner: string, name: string, fullName: string): Promise<void> {
   for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
     try {
-      const issues = await fetchGoodFirstIssues(owner, name, false);
+      const issues = await fetchRepoIssues(owner, name, false);
       if (issues.length > 0) {
         await upsertRepoIssues(fullName, issues);
-        console.log(`[refresh-top] stored ${issues.length} good-first issues for ${fullName}`);
+        const counts = issues.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {} as Record<string, number>);
+        console.log(`[refresh-top] stored ${issues.length} issues for ${fullName} (${Object.entries(counts).map(([k,v]) => `${k}=${v}`).join(', ')})`);
       }
       return;
     } catch (e) {

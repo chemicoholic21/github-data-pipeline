@@ -14,6 +14,7 @@ export interface RepoIssue {
   url: string;
   authorLogin: string | null;
   labels: string[];
+  category: 'good_first_issue' | 'help_wanted' | 'open';
   createdAt: string | null;
 }
 

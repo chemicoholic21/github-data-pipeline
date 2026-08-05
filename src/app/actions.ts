@@ -3,7 +3,7 @@
 
 import { db } from '../db/dbClient.js';
 import { leaderboard, repoIssues } from '../db/schema.js';
-import { desc, gt, eq } from 'drizzle-orm';
+import { desc, gt, eq, and } from 'drizzle-orm';
 import { withCache } from '../lib/apiCache.js';
 
 interface MemberProfile {
@@ -70,20 +70,26 @@ export async function getMemberProfile(username: string): Promise<MemberProfile 
   );
 }
 
-export async function getRepoIssues(fullName: string): Promise<RepoIssue[]> {
+export async function getRepoIssues(fullName: string, category?: string): Promise<RepoIssue[]> {
+  const cacheKey = category ? `repo:issues:${fullName}:${category}` : `repo:issues:${fullName}`;
   return withCache(
-    `repo:issues:${fullName}`,
+    cacheKey,
     async () => {
+      const whereClause = category
+        ? and(eq(repoIssues.fullName, fullName), eq(repoIssues.category, category))
+        : eq(repoIssues.fullName, fullName);
+
       const results = await db
         .select({
           title: repoIssues.title,
           url: repoIssues.url,
           authorLogin: repoIssues.authorLogin,
           labels: repoIssues.labels,
+          category: repoIssues.category,
           createdAt: repoIssues.createdAt,
         })
         .from(repoIssues)
-        .where(eq(repoIssues.fullName, fullName))
+        .where(whereClause)
         .orderBy(repoIssues.createdAt);
 
       return results as RepoIssue[];
