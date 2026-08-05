@@ -2,7 +2,8 @@
  * refresh-top-repos.ts
  *
  * Refreshes the top-scoring repositories in repo_health by category/pillar,
- * skipping repos that were scored recently (no re-scraping of fresh data).
+ * always forcing a fresh GraphQL scrape (bypasses api_cache) so data stays
+ * current. Repos scored within AFTER_DAYS are skipped entirely.
  *
  * Categories (pillars):
  *   contribution      combined 0..100 score
@@ -92,7 +93,7 @@ async function sleepUntilNextReset(): Promise<void> {
 async function processRepo(owner: string, name: string): Promise<boolean> {
   for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
     try {
-      const metrics = await fetchRepoHealth(owner, name, false);
+      const metrics = await fetchRepoHealth(owner, name, true);
       if (!metrics) {
         console.log(`[refresh-top] ${owner}/${name} not found — skipping`);
         return false;
@@ -122,7 +123,7 @@ async function processRepo(owner: string, name: string): Promise<boolean> {
 async function processIssues(owner: string, name: string, fullName: string): Promise<void> {
   for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
     try {
-      const issues = await fetchRepoIssues(owner, name, false);
+      const issues = await fetchRepoIssues(owner, name, true);
       if (issues.length > 0) {
         await upsertRepoIssues(fullName, issues);
         const counts = issues.reduce((acc, i) => { acc[i.category] = (acc[i.category] || 0) + 1; return acc; }, {} as Record<string, number>);
