@@ -39,7 +39,7 @@ type CategoryKey = keyof typeof CATEGORIES;
 type CategoryColumn = (typeof CATEGORIES)[CategoryKey];
 
 const AFTER_DAYS = Number(process.env.AFTER_DAYS ?? 7);
-const LIMIT = Number(process.env.LIMIT ?? 50);
+const LIMIT = Number(process.env.LIMIT ?? 400);
 const PER_REPO_DELAY_MS = Number(process.env.PER_REPO_DELAY_MS ?? 1500);
 const RETRY_MAX_ATTEMPTS = Number(process.env.RETRY_MAX_ATTEMPTS ?? 3);
 const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 10_000);
