@@ -21,9 +21,9 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/dbClient.js';
 import { getBestToken } from '../github/tokenPool.js';
-import { fetchRepoHealth } from '../lib/githubScraper.js';
+import { fetchRepoHealth, fetchGoodFirstIssues } from '../lib/githubScraper.js';
 import { computeContributionScore } from '../lib/scoring.js';
-import { upsertRepoHealth } from '../db/upserts.js';
+import { upsertRepoHealth, upsertRepoIssues } from '../db/upserts.js';
 import { sleep, backoffDelay } from '../utils/async.js';
 
 const CATEGORIES = {
@@ -119,6 +119,27 @@ async function processRepo(owner: string, name: string): Promise<boolean> {
   return false;
 }
 
+async function processIssues(owner: string, name: string, fullName: string): Promise<void> {
+  for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const issues = await fetchGoodFirstIssues(owner, name, false);
+      if (issues.length > 0) {
+        await upsertRepoIssues(fullName, issues);
+        console.log(`[refresh-top] stored ${issues.length} good-first issues for ${fullName}`);
+      }
+      return;
+    } catch (e) {
+      console.error(
+        `[refresh-top] issues for ${fullName} threw (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}):`,
+        (e as Error).message
+      );
+      if (attempt < RETRY_MAX_ATTEMPTS) {
+        await sleep(backoffDelay(attempt, RETRY_BASE_DELAY_MS));
+      }
+    }
+  }
+}
+
 const fmt = (n: number | null) => (n == null ? '—' : n.toFixed(2));
 
 async function main() {
@@ -129,6 +150,7 @@ async function main() {
 
   let totalProcessed = 0;
   let totalSkipped = 0;
+  const processedRepos = new Set<string>();
 
   for (const category of categories) {
     if (stopping) break;
@@ -157,7 +179,24 @@ async function main() {
       }
 
       const ok = await processRepo(repo.owner_login, repo.repo_name);
-      if (ok) totalProcessed++; else totalSkipped++;
+      if (ok) {
+        totalProcessed++;
+        if (!processedRepos.has(repo.full_name)) {
+          processedRepos.add(repo.full_name);
+          try {
+            await getBestToken();
+          } catch (e) {
+            if (e instanceof Error && e.message === 'rate-limited-all-tokens') {
+              await sleepUntilNextReset();
+              continue;
+            }
+            throw e;
+          }
+          await processIssues(repo.owner_login, repo.repo_name, repo.full_name);
+        }
+      } else {
+        totalSkipped++;
+      }
       await sleep(PER_REPO_DELAY_MS);
     }
   }

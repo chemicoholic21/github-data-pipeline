@@ -7,8 +7,10 @@ import {
   githubPullRequests,
   userRepoScores,
   repoHealth,
+  repoIssues,
 } from './schema.js';
 import { sql } from 'drizzle-orm';
+import type { RepoIssue } from '../types/repoHealth.js';
 
 /**
  * Upserts a GitHub user profile into the github_users table.
@@ -243,6 +245,33 @@ export async function upsertRepoHealth(m: RepoHealthMetrics, s: ContributionScor
     .insert(repoHealth)
     .values(values)
     .onConflictDoUpdate({ target: repoHealth.fullName, set: values });
+}
+
+export async function upsertRepoIssues(fullName: string, issues: RepoIssue[]) {
+  if (issues.length === 0) return;
+
+  const values = issues.map((issue) => ({
+    fullName,
+    githubIssueId: issue.githubIssueId,
+    title: issue.title,
+    url: issue.url,
+    authorLogin: issue.authorLogin,
+    labels: issue.labels,
+    createdAt: issue.createdAt ? new Date(issue.createdAt) : null,
+    fetchedAt: new Date(),
+  }));
+
+  await db.insert(repoIssues).values(values).onConflictDoUpdate({
+    target: [repoIssues.fullName, repoIssues.githubIssueId],
+    set: {
+      title: sql`EXCLUDED.title`,
+      url: sql`EXCLUDED.url`,
+      authorLogin: sql`EXCLUDED.author_login`,
+      labels: sql`EXCLUDED.labels`,
+      createdAt: sql`EXCLUDED.created_at`,
+      fetchedAt: sql`EXCLUDED.fetched_at`,
+    },
+  });
 }
 
 export async function markGithubUserScraped(username: string) {

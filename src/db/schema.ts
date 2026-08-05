@@ -140,6 +140,25 @@ export const repoHealth = pgTable(
   })
 );
 
+// Individual good-first issues for top repositories.
+export const repoIssues = pgTable(
+  'repo_issues',
+  {
+    fullName: text('full_name').notNull(),
+    githubIssueId: text('github_issue_id').notNull(),
+    title: text('title').notNull(),
+    url: text('url').notNull(),
+    authorLogin: text('author_login'),
+    labels: text('labels').array(),
+    createdAt: timestamp('created_at'),
+    fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.fullName, table.githubIssueId] }),
+    idxRepoIssuesFullName: index('idx_repo_issues_full_name').on(table.fullName),
+  })
+);
+
 // Per-repo scores for each user: score = stars × (userPRs / totalPRs)
 export const userRepoScores = pgTable(
   'user_repo_scores',

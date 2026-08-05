@@ -1,6 +1,6 @@
 import { gitHubGraphqlClient } from '../github/graphqlClient.js';
 import type { User, Repository, PullRequest } from '../types/github.js';
-import type { RepoHealthMetrics } from '../types/repoHealth.js';
+import type { RepoHealthMetrics, RepoIssue } from '../types/repoHealth.js';
 
 /**
  * Fragment for rate limit information in GraphQL responses
@@ -447,6 +447,68 @@ const GET_REPO_HEALTH_QUERY = `
 `;
 
 const HOUR_MS = 3_600_000;
+
+interface RepoGoodFirstIssuesResponse {
+  repository: {
+    goodFirstIssues: {
+      totalCount: number;
+      nodes: Array<{
+        id: string;
+        title: string;
+        url: string;
+        author: { login: string } | null;
+        labels: { nodes: Array<{ name: string }> };
+        createdAt: string | null;
+      }>;
+    };
+  } | null;
+}
+
+const GET_GOOD_FIRST_ISSUES_QUERY = `
+  query GetGoodFirstIssues($owner: String!, $name: String!, $first: Int!) {
+    repository(owner: $owner, name: $name) {
+      goodFirstIssues: issues(states: OPEN, labels: ["good first issue"], first: $first) {
+        totalCount
+        nodes {
+          id
+          title
+          url
+          author { login }
+          labels(first: 10) { nodes { name } }
+          createdAt
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchGoodFirstIssues(
+  owner: string,
+  name: string,
+  forceRefresh = false
+): Promise<RepoIssue[]> {
+  console.log(`[API] Fetching good-first issues: ${owner}/${name}`);
+  const res = await gitHubGraphqlClient.request<RepoGoodFirstIssuesResponse>({
+    query: GET_GOOD_FIRST_ISSUES_QUERY,
+    variables: { owner, name, first: 100 },
+    operationName: 'GetGoodFirstIssues',
+    useCache: true,
+    cacheTTL: 3 * 24 * 60 * 60 * 1000, // 3 days
+    forceRefresh,
+  });
+
+  const repo = res.repository;
+  if (!repo) return [];
+
+  return repo.goodFirstIssues.nodes.map((node) => ({
+    githubIssueId: node.id,
+    title: node.title,
+    url: node.url,
+    authorLogin: node.author?.login ?? null,
+    labels: node.labels.nodes.map((l) => l.name),
+    createdAt: node.createdAt,
+  }));
+}
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
