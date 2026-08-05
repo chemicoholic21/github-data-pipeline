@@ -12,6 +12,7 @@
     "discover-repos": "tsx src/scripts/discover-repos.ts",
     "refresh-worker": "tsx src/scripts/refresh-worker.ts",
     "compute-repo-health": "tsx src/scripts/compute-repo-health.ts",
+    "refresh-top-repos": "tsx src/scripts/refresh-top-repos.ts",
     "test:repo-score": "tsx src/scripts/test-contribution-score.ts",
     "enrich-linkedin": "tsx src/scripts/enrich-linkedin-apify.ts",
     "enrich-linkedin-sf": "tsx src/scripts/enrich-linkedin-sf.ts",
